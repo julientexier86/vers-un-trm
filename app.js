@@ -1365,8 +1365,18 @@ function calculateDynamicApports() {
                 cumulativeHP += hpPart;
             }
         });
+
+        // CSD interne : les heures données par ce professeur sont créditées
+        // en HP à la discipline receveuse (ex: Lettres Classiques → Lettres Modernes).
+        // Si des classes de cette discipline lui sont déjà affectées via la grille Équipes,
+        // seul le surplus non couvert est crédité (pas de double comptage).
+        if (csd > 0 && t.csd_sub && t.csd_sub !== t.subject && apports[t.csd_sub]) {
+            const extra = Math.max(0, csd - (allocated[t.csd_sub] || 0));
+            apports[t.csd_sub].hp += extra;
+            apports[t.csd_sub].total += extra;
+        }
     });
-    
+
     return apports;
 }
 
@@ -1436,6 +1446,12 @@ function getTeacherAllocationInSubject(t, tIdx, sub) {
         }
     });
     
+    // CSD interne : les heures données comptent comme HP dans la discipline receveuse
+    // (seul le surplus non déjà couvert par des affectations de la grille est ajouté)
+    if (csd > 0 && t.csd_sub === sub && t.subject !== sub) {
+        hpPart += Math.max(0, csd - (allocated[sub] || 0));
+    }
+
     return { hp: hpPart, hsa: hsaPart, total: hpPart + hsaPart };
 }
 
@@ -1470,7 +1486,7 @@ function renderRHDisc() {
                 }
             });
             return { ...t, idx: idx, assignedInSub: assignedHrs };
-        }).filter(t => t.subject === sub || t.assignedInSub > 0);
+        }).filter(t => t.subject === sub || t.assignedInSub > 0 || (t.csd_sub === sub && (t.csd || 0) > 0));
         
         const hp = apports[sub] ? apports[sub].hp : 0;
         const hsa = apports[sub] ? apports[sub].hsa : 0;
@@ -1561,7 +1577,7 @@ function renderRHDisc() {
             
             if(p.csd > 0) {
                 detailsTxt += `<div onclick="setCSD(${p.idx})" title="Modifier le volume CSD" style="cursor:pointer; background:#fdf2e9; border:1px solid #fad7a0; color:#e67e22; font-size:0.75rem; font-weight:bold; margin-top:2px; padding:2px 5px; border-radius:4px; display:inline-flex; align-items:center; gap:5px;">
-                   <span>(Dont ${p.csd}h CSD)</span> <span>✏️</span>
+                   <span>(Dont ${p.csd}h CSD${p.csd_sub ? ' → ' + p.csd_sub : ' ext.'})</span> <span>✏️</span>
                 </div><br>`;
             }
 
@@ -1648,6 +1664,7 @@ function loadSaveFile(input) {
             if (loadedData.teachers) {
                 loadedData.teachers.forEach(p => {
                     if (p.csd === undefined) p.csd = 0;
+                    if (p.csd_sub === undefined) p.csd_sub = "";
                     if (p.decharge === undefined) p.decharge = 0;
                     if (p.dech_ext === undefined) p.dech_ext = 0; 
                 });
@@ -1923,6 +1940,7 @@ function renderRH() {
 
         // Initialisation des valeurs si manquantes
         if (p.csd === undefined) p.csd = 0;
+        if (p.csd_sub === undefined) p.csd_sub = "";
         if (p.decharge === undefined) p.decharge = 0;
         if (p.dech_ext === undefined) p.dech_ext = 0;
         if (p.bmp === undefined) p.bmp = 0; 
@@ -1939,7 +1957,7 @@ function renderRH() {
             rowStyle = `background: linear-gradient(90deg, #fff 0%, #ebf5fb 100%);`; 
         }
         if (p.csd > 0) {
-            infoDisplay += `<div style="font-size:0.7rem; color:#17a2b8; font-weight:bold;">- ${p.csd}h CSD</div>`;
+            infoDisplay += `<div style="font-size:0.7rem; color:#17a2b8; font-weight:bold;">- ${p.csd}h CSD${p.csd_sub ? ' → ' + p.csd_sub : ' (ext.)'}</div>`;
             if(!rowStyle) rowStyle = `background: linear-gradient(90deg, #fff 0%, #eefbfd 100%);`; 
         }
         if (p.decharge > 0) {
@@ -2037,21 +2055,68 @@ function renderRH() {
 function setCSD(idx) {
     const teacher = DATA.teachers[idx];
     const current = teacher.csd || 0;
-    
-    const val = prompt(`Gérer le CSD (Complément de Service Donné) pour ${teacher.name}.\n\nCe professeur fera une partie de son service ailleurs.\nCombien d'heures fait-il À L'EXTÉRIEUR ?`, current);
-    
+
+    const val = prompt(`Gérer le CSD (Complément de Service Donné) pour ${teacher.name}.\n\nCe professeur fera une partie de son service dans une autre discipline ou un autre établissement.\nCombien d'heures donne-t-il ?`, current);
+
     if (val !== null) {
         const hours = parseFloat(val);
         if (isNaN(hours) || hours < 0) return alert("Valeur invalide");
         if (hours >= teacher.ors) return alert("Le CSD ne peut pas être supérieur ou égal à l'ORS total !");
-        
+
         teacher.csd = hours;
+
+        // Destination du CSD : interne (vers une autre discipline de l'établissement) ou externe
+        if (hours > 0) {
+            const otherSubjects = DATA.subjects.filter(s => s !== teacher.subject);
+            const listing = otherSubjects.map((s, i) => `${i + 1}. ${s}`).join('\n');
+            const destRaw = prompt(
+                `Destination du CSD de ${teacher.name} (${hours}h) :\n\n` +
+                `Laissez VIDE si le complément part vers un AUTRE ÉTABLISSEMENT (les heures sortent de la DHG).\n\n` +
+                `Sinon, saisissez le numéro de la discipline INTERNE qui reçoit ces heures (ex: le professeur de Lettres Classiques qui complète en Lettres Modernes) :\n\n` + listing,
+                teacher.csd_sub ? (otherSubjects.indexOf(teacher.csd_sub) + 1) : ''
+            );
+            if (destRaw !== null && destRaw.trim() !== '') {
+                const num = parseInt(destRaw.trim());
+                if (!isNaN(num) && num >= 1 && num <= otherSubjects.length) {
+                    teacher.csd_sub = otherSubjects[num - 1];
+                } else if (DATA.subjects.includes(destRaw.trim())) {
+                    teacher.csd_sub = destRaw.trim();
+                } else {
+                    alert("Discipline non reconnue : le CSD est considéré comme EXTERNE.");
+                    teacher.csd_sub = "";
+                }
+            } else {
+                teacher.csd_sub = "";
+            }
+        } else {
+            teacher.csd_sub = "";
+        }
+
         saveData();
         renderRH();
         // On rafraîchit les tableaux de bord car l'apport change
         if (document.getElementById('rh-view-disc').style.display !== 'none') renderRHDisc();
         calculateRecap();
     }
+}
+
+// Total des heures de CSD interne reçues par une discipline
+// (professeurs d'une autre discipline qui viennent y faire un complément de service)
+function getCsdReceived(subject, teachersArr) {
+    let total = 0;
+    (teachersArr || DATA.teachers || []).forEach(t => {
+        if (t.csd_sub === subject && t.subject !== subject) {
+            total += parseFloat(t.csd || 0);
+        }
+    });
+    return total;
+}
+
+// Liste détaillée des CSD internes reçus par une discipline (pour affichage)
+function getCsdReceivedDetails(subject) {
+    return (DATA.teachers || [])
+        .filter(t => t.csd_sub === subject && t.subject !== subject && parseFloat(t.csd || 0) > 0)
+        .map(t => ({ name: t.name, from: t.subject, hours: parseFloat(t.csd || 0) }));
 }
 
 function setDecharge(idx) {
@@ -2192,7 +2257,7 @@ function updT(i,f,v){
     }
 }
 function addTeacherToSubject(s) { 
-    DATA.teachers.push({name:"Nouveau", subject:s, status:"Certifié", ors:18, hsa:0, csd:0, decharge:0}); 
+    DATA.teachers.push({name:"Nouveau", subject:s, status:"Certifié", ors:18, hsa:0, csd:0, csd_sub:"", decharge:0}); 
     renderRH(); 
     saveData(); 
     // CORRECTION : Si on est déjà sur le pilotage (ce qui est le cas quand on clique sur le +), on recharge le pilotage
@@ -2275,6 +2340,7 @@ function importRH(input) {
                         ors: 18, 
                         hsa: 0,
                         csd: 0,       // Ajouté
+                        csd_sub: "",
                         decharge: 0   // Ajouté
                     });
                     cnt++;
@@ -2343,9 +2409,17 @@ function calculateRecap() {
 
         // Génération des tags automatiques (BMP, CSD)
         if (bmp > 0) autoComments[p.subject].push(`BMP ${bmp}h`);
-        if (csd > 0) autoComments[p.subject].push(`CSD ${p.name} ${csd}h`);
-    }); 
-    
+        if (csd > 0) autoComments[p.subject].push(`CSD ${p.name} ${csd}h` + (p.csd_sub ? ` → ${p.csd_sub}` : ' (ext.)'));
+
+        // CSD interne : les heures données sont créditées à la discipline receveuse
+        if (csd > 0 && p.csd_sub && p.csd_sub !== p.subject) {
+            if (!res[p.csd_sub]) res[p.csd_sub] = { teaching:0, cost:0, hsa:0, dechInt:0 };
+            if (!autoComments[p.csd_sub]) autoComments[p.csd_sub] = [];
+            res[p.csd_sub].cost += csd;
+            autoComments[p.csd_sub].push(`CSD reçu ${p.name} (${p.subject}) ${csd}h`);
+        }
+    });
+
     // --- CORRECTIF ICI ---
     // On initialise l'apport à 0 (ce sont les profs qui vont le remplir plus bas)
     let globalNeed = totalHeuresEDS, totalApport = 0, totalHSA = 0;
@@ -2773,7 +2847,7 @@ function exportRepartitionMatiereExcel() {
 
                 // Services & Solde
                 const serviceGlobal = getGlobalTeacherService(p.idx);
-                const serviceDu = p.ors - (p.csd || 0);
+                const serviceDu = p.ors - (p.csd_sub ? 0 : (p.csd || 0)); // CSD interne : heures toujours dues dans l'établissement
                 
                 row.push({ v: serviceGlobal, t: 'n', s: baseStyle });
                 row.push({ v: serviceDu, t: 'n', s: baseStyle });
@@ -2955,7 +3029,7 @@ function exportRepartitionMatierePDF() {
                 });
 
                 const serviceGlobal = getGlobalTeacherService(p.idx);
-                const serviceDu = p.ors - (p.csd || 0);
+                const serviceDu = p.ors - (p.csd_sub ? 0 : (p.csd || 0)); // CSD interne : heures toujours dues dans l'établissement
 
                 row.total = rowTotal.toFixed(1);
                 row.global = serviceGlobal.toFixed(1);
@@ -3115,7 +3189,7 @@ function generateRepartitionProfsPDF() {
             const realIdx = group.indices[i];
             const csd = parseFloat(t.csd || 0);
             const dech = (parseFloat(t.decharge || 0) + parseFloat(t.dech_ext || 0));
-            totalDu += (t.ors - csd);
+            totalDu += (t.ors - (t.csd_sub ? 0 : csd)); // CSD interne : heures toujours dues dans l'établissement
 
             let levelsPaid = new Set();
             const relevantKeys = Object.keys(DATA.assignments).filter(k => parseInt(k.split('_')[1]) === realIdx);
@@ -3332,7 +3406,7 @@ function generateProPDF(section, title, filename, customOrientation, customForma
             const profs = DATA.teachers.map((t, idx) => ({...t, idx: idx})).filter(t => t.subject === sub);
             const dechInt = profs.reduce((a,t)=>a+(t.decharge||0), 0);
             const dechExt = profs.reduce((a,t)=>a+(t.dech_ext||0), 0);
-            const hp = profs.reduce((a,t)=> a + (t.ors - (t.csd||0) - (t.dech_ext||0)), 0);
+            const hp = profs.reduce((a,t)=> a + (t.ors - (t.csd||0) - (t.dech_ext||0)), 0) + getCsdReceived(sub);
             const hsa = profs.reduce((a,t)=>a+t.hsa, 0);
             const bes = (needs[sub] || 0) + dechInt;
             const app = hp + hsa;
@@ -3394,7 +3468,7 @@ function generateProPDF(section, title, filename, customOrientation, customForma
             const realContrib = (p.ors - (p.csd||0) - (p.dech_ext||0)) + p.hsa;
             let info = ""; 
             if(p.bmp>0) info += `BMP ${p.bmp}h `;
-            if(p.csd>0) info += `(Dont ${p.csd}h CSD) `;
+            if(p.csd>0) info += `(Dont ${p.csd}h CSD${p.csd_sub ? ' → ' + p.csd_sub : ' ext.'}) `;
             if(p.decharge>0) info += `(Dont ${p.decharge}h DGH) `;
             
             const profLabel = indent ? `      ${p.name} (${p.status})` : `   ${p.name} (${p.status})`;
@@ -4394,6 +4468,11 @@ function generateCAPres() {
         if (!res[p.subject]) res[p.subject] = { cost: 0, dechInt: 0 };
         res[p.subject].cost += (p.ors - (p.csd||0) - (p.dech_ext||0)) + p.hsa;
         res[p.subject].dechInt += parseFloat(p.decharge || 0);
+        // CSD interne : heures créditées à la discipline receveuse
+        if ((p.csd||0) > 0 && p.csd_sub && p.csd_sub !== p.subject) {
+            if (!res[p.csd_sub]) res[p.csd_sub] = { cost: 0, dechInt: 0 };
+            res[p.csd_sub].cost += parseFloat(p.csd);
+        }
     });
 
     let deficits = [], balances = [], surpluses = [];
@@ -4885,7 +4964,7 @@ function renderRepartitionProfs(container) {
                 const realIdx = group.indices[i];
                 const csd = parseFloat(t.csd || 0);
                 const dech = (parseFloat(t.decharge || 0) + parseFloat(t.dech_ext || 0));
-                totalDu += (t.ors - csd);
+                totalDu += (t.ors - (t.csd_sub ? 0 : csd)); // CSD interne : heures toujours dues dans l'établissement
 
                 // --- SET ANTI-DOUBLON ---
                 let levelsPaid = new Set();
@@ -5150,7 +5229,7 @@ function renderRepartitionMatieres(container) {
             // --- 5. LIGNES ENSEIGNANTS ---
             profs.forEach(p => {
                 let rowTotal = 0;
-                const serviceDu = p.ors - (p.csd || 0);
+                const serviceDu = p.ors - (p.csd_sub ? 0 : (p.csd || 0)); // CSD interne : heures toujours dues dans l'établissement
                 const serviceGlobal = getGlobalTeacherService(p.idx);
                 let glbColor = serviceGlobal >= serviceDu ? "#27ae60" : "#c0392b";
 
@@ -5962,7 +6041,7 @@ function countIncompletePosts(sData) {
         const ors = parseFloat(p.ors || 0);
         
         // Obligation réglementaire dans l'établissement
-        const expectedORS = ors - csd - dechExt - dechInt;
+        const expectedORS = ors - (p.csd_sub ? 0 : csd) - dechExt - dechInt; // CSD interne : heures toujours dues dans l'établissement
         
         let assignedORS = 0;
         const assignments = dataObj.assignments || {};
@@ -6554,4 +6633,85 @@ function exportTeacherServicePDF(tIdx) {
     doc.text("Signature du Chef d'Établissement", 120, finalY);
     
     doc.save(`Fiche_Service_${p.name.replace(/\s+/g, '_')}.pdf`);
+}
+
+// ------------------------------------------------------------------------------------------------
+// DIAGNOSTIC DE COUVERTURE (Tableau de bord)
+// ------------------------------------------------------------------------------------------------
+function renderDiagnosticTable() {
+    const tBody = document.getElementById('diagnostic-coverage-body');
+    if (!tBody || !DATA) return;
+
+    const needs = (typeof calculateNeeds === 'function') ? calculateNeeds() : {};
+    const apports = (typeof calculateDynamicApports === 'function') ? calculateDynamicApports() : {};
+
+    let html = '';
+    DATA.subjects.forEach(s => {
+        const dechInt = (DATA.teachers || []).filter(t => t.subject === s)
+            .reduce((a, t) => a + (parseFloat(t.decharge) || 0), 0);
+        const besoin = (needs[s] || 0) + dechInt;
+        const ressource = apports[s] ? apports[s].total : 0;
+        if (besoin <= 0 && ressource <= 0) return;
+
+        const ecart = ressource - besoin;
+        let badge, color;
+        if (Math.abs(ecart) < 0.3) { badge = '✔️ Équilibré'; color = 'var(--success)'; }
+        else if (ecart < 0) { badge = '⚠️ Sous-doté'; color = 'var(--danger)'; }
+        else { badge = 'ℹ️ Sur-doté'; color = 'var(--secondary)'; }
+
+        const csdIn = (typeof getCsdReceived === 'function') ? getCsdReceived(s) : 0;
+        const csdInfo = csdIn > 0 ? ` <small style="color:var(--text-muted);">(dont ${csdIn}h CSD reçu)</small>` : '';
+
+        html += `<tr>
+            <td style="text-align:left; font-weight:600;">${s}</td>
+            <td>${besoin.toFixed(1)} h</td>
+            <td>${ressource.toFixed(1)} h${csdInfo}</td>
+            <td style="font-weight:bold; color:${ecart < 0 ? 'var(--danger)' : 'var(--success)'};">${(ecart >= 0 ? '+' : '') + ecart.toFixed(1)} h</td>
+            <td style="font-weight:600; color:${color};">${badge}</td>
+        </tr>`;
+    });
+
+    tBody.innerHTML = html || `<tr><td colspan="5" style="color:var(--text-muted); font-style:italic;">Aucune donnée : renseignez la structure et les professeurs.</td></tr>`;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ESTIMATION D'OCCUPATION DES SALLES SPÉCIALISÉES (Tableau de bord)
+// ------------------------------------------------------------------------------------------------
+function calculateRoomsOccupancy() {
+    const tBody = document.getElementById('rooms-occupancy-body');
+    if (!tBody || !DATA) return;
+
+    const ROOM_MAP = {
+        'SVT': 'Sciences', 'Phys-Chi': 'Sciences', 'SVT (TC)': 'Sciences', 'Phys-Chi (TC)': 'Sciences',
+        'Techno': 'Technologie', 'EPS': 'EPS (Gymnase / Plateaux)',
+        'Arts Plast.': 'Arts Plastiques', 'Education Musicale': 'Musique'
+    };
+    const TARGET_HOURS_PER_ROOM = 30;
+
+    const needs = (typeof calculateNeeds === 'function') ? calculateNeeds() : {};
+    const byRoom = {};
+    DATA.subjects.forEach(s => {
+        const room = ROOM_MAP[s];
+        if (room) byRoom[room] = (byRoom[room] || 0) + (needs[s] || 0);
+    });
+
+    let html = '';
+    Object.keys(byRoom).forEach(room => {
+        const hours = byRoom[room];
+        if (hours <= 0) return;
+        const roomsNeeded = Math.ceil(hours / TARGET_HOURS_PER_ROOM);
+        const occRate = roomsNeeded > 0 ? Math.round(hours / (roomsNeeded * TARGET_HOURS_PER_ROOM) * 100) : 0;
+        let diag = '✔️ Confortable', color = 'var(--success)';
+        if (occRate > 90) { diag = '🔴 Saturé'; color = 'var(--danger)'; }
+        else if (occRate > 75) { diag = '🟠 Tendu'; color = 'var(--accent)'; }
+
+        html += `<tr>
+            <td style="text-align:left; font-weight:600;">${room}</td>
+            <td>${hours.toFixed(1)} h / semaine</td>
+            <td>${roomsNeeded} salle(s) <small style="color:var(--text-muted);">(${occRate}% d'occupation)</small></td>
+            <td style="font-weight:600; color:${color};">${diag}</td>
+        </tr>`;
+    });
+
+    tBody.innerHTML = html || `<tr><td colspan="4" style="color:var(--text-muted); font-style:italic;">Aucune matière à salle spécialisée détectée dans la grille.</td></tr>`;
 }
