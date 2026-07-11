@@ -1295,8 +1295,150 @@ function renameSubject(oldName, newName) {
 }
 
 // ------------------------------------------------------------------------------------------------
-// VUE PILOTAGE (DISCIPLINE) - Mise à jour V2.9 (Prise en compte CSD + Décharges)
+// VUE PILOTAGE (DISCIPLINE) - Double-valence & Complément de service interne
 // ------------------------------------------------------------------------------------------------
+function calculateDynamicApports() {
+    const apports = {};
+    DATA.subjects.forEach(s => {
+        apports[s] = { hp: 0, hsa: 0, total: 0 };
+    });
+    
+    (DATA.teachers || []).forEach((t, tIdx) => {
+        const ors = parseFloat(t.ors || 0);
+        const thsa = parseFloat(t.hsa || 0);
+        const csd = parseFloat(t.csd || 0);
+        const dechInt = parseFloat(t.decharge || 0);
+        const dechExt = parseFloat(t.dech_ext || 0);
+        
+        const expectedORS = ors - csd - dechExt;
+        const capacity = expectedORS + thsa;
+        
+        const allocated = {};
+        DATA.subjects.forEach(s => allocated[s] = 0);
+        
+        let totalAssigned = 0;
+        Object.keys(DATA.assignments || {}).forEach(k => {
+            if (DATA.assignments[k] === t.name && k.includes('|') && !k.endsWith('|PP')) {
+                const parts = k.split('|');
+                const classId = parts[0];
+                const subjectName = parts[1];
+                
+                let matchingLevel = null;
+                DATA.structure.forEach(lvl => {
+                    if (classId.startsWith(getLevelPrefix(lvl.level))) {
+                        matchingLevel = lvl.level;
+                    }
+                });
+                
+                if (matchingLevel) {
+                    const isOv = DATA.classOverrides && DATA.classOverrides[classId] && DATA.classOverrides[classId][subjectName];
+                    const cfg = isOv ? DATA.classOverrides[classId][subjectName] : (DATA.levelConfig[matchingLevel] ? DATA.levelConfig[matchingLevel][subjectName] : null);
+                    if (cfg) {
+                        const hrs = ((parseFloat(cfg.base)||0) + (parseFloat(cfg.marge)||0)) * (parseFloat(cfg.coef)||1);
+                        allocated[subjectName] = (allocated[subjectName] || 0) + hrs;
+                        totalAssigned += hrs;
+                    }
+                }
+            }
+        });
+        
+        if (t.subject && DATA.subjects.includes(t.subject)) {
+            allocated[t.subject] = (allocated[t.subject] || 0) + Math.max(0, capacity - totalAssigned);
+        }
+        
+        let cumulativeHP = 0;
+        const subjectOrder = DATA.subjects.filter(s => s !== t.subject);
+        if (t.subject && DATA.subjects.includes(t.subject)) {
+            subjectOrder.push(t.subject);
+        }
+        
+        subjectOrder.forEach(s => {
+            const alloc = allocated[s] || 0;
+            if (alloc > 0) {
+                const hpPart = Math.min(alloc, Math.max(0, expectedORS - cumulativeHP));
+                const hsaPart = alloc - hpPart;
+                
+                apports[s].hp += hpPart;
+                apports[s].hsa += hsaPart;
+                apports[s].total += alloc;
+                
+                cumulativeHP += hpPart;
+            }
+        });
+    });
+    
+    return apports;
+}
+
+function getTeacherAllocationInSubject(t, tIdx, sub) {
+    const ors = parseFloat(t.ors || 0);
+    const thsa = parseFloat(t.hsa || 0);
+    const csd = parseFloat(t.csd || 0);
+    const dechExt = parseFloat(t.dech_ext || 0);
+    
+    const expectedORS = ors - csd - dechExt;
+    const capacity = expectedORS + thsa;
+    
+    const allocated = {};
+    DATA.subjects.forEach(s => allocated[s] = 0);
+    
+    let totalAssigned = 0;
+    Object.keys(DATA.assignments || {}).forEach(k => {
+        if (DATA.assignments[k] === t.name && k.includes('|') && !k.endsWith('|PP')) {
+            const parts = k.split('|');
+            const classId = parts[0];
+            const subjectName = parts[1];
+            
+            let matchingLevel = null;
+            DATA.structure.forEach(lvl => {
+                if (classId.startsWith(getLevelPrefix(lvl.level))) {
+                    matchingLevel = lvl.level;
+                }
+            });
+            
+            if (matchingLevel) {
+                const isOv = DATA.classOverrides && DATA.classOverrides[classId] && DATA.classOverrides[classId][subjectName];
+                const cfg = isOv ? DATA.classOverrides[classId][subjectName] : (DATA.levelConfig[matchingLevel] ? DATA.levelConfig[matchingLevel][subjectName] : null);
+                if (cfg) {
+                    const hrs = ((parseFloat(cfg.base)||0) + (parseFloat(cfg.marge)||0)) * (parseFloat(cfg.coef)||1);
+                    allocated[subjectName] = (allocated[subjectName] || 0) + hrs;
+                    totalAssigned += hrs;
+                }
+            }
+        }
+    });
+    
+    if (t.subject && DATA.subjects.includes(t.subject)) {
+        allocated[t.subject] = (allocated[t.subject] || 0) + Math.max(0, capacity - totalAssigned);
+    }
+    
+    let cumulativeHP = 0;
+    const subjectOrder = DATA.subjects.filter(s => s !== t.subject);
+    if (t.subject && DATA.subjects.includes(t.subject)) {
+        subjectOrder.push(t.subject);
+    }
+    
+    let hpPart = 0;
+    let hsaPart = 0;
+    
+    subjectOrder.forEach(s => {
+        const alloc = allocated[s] || 0;
+        if (alloc > 0) {
+            const currentHp = Math.min(alloc, Math.max(0, expectedORS - cumulativeHP));
+            const currentHsa = alloc - currentHp;
+            
+            if (s === sub) {
+                hpPart = currentHp;
+                hsaPart = currentHsa;
+            }
+            
+            cumulativeHP += currentHp;
+        }
+    });
+    
+    return { hp: hpPart, hsa: hsaPart, total: hpPart + hsaPart };
+}
+
 function renderRHDisc() {
     const needs = calculateNeeds();
     const tBody = document.getElementById('rh-disc-body');
@@ -1304,13 +1446,35 @@ function renderRHDisc() {
     tBody.innerHTML = '';
     
     const roots = DATA.subjects.filter(s => !DATA.subjectMeta[s]?.parent).sort();
+    const apports = calculateDynamicApports();
 
     const getStats = (sub) => {
-        const profs = DATA.teachers.map((t, idx) => ({...t, idx: idx})).filter(t => t.subject === sub);
-        const dechInt = profs.reduce((a,t)=>a+(t.decharge||0), 0);
-        const dechExt = profs.reduce((a,t)=>a+(t.dech_ext||0), 0);
-        const hp = profs.reduce((a,t)=> a + (t.ors - (t.csd||0) - (t.dech_ext||0)), 0);
-        const hsa = profs.reduce((a,t)=>a+t.hsa, 0);
+        const profs = DATA.teachers.map((t, idx) => {
+            let assignedHrs = 0;
+            Object.keys(DATA.assignments || {}).forEach(k => {
+                if (DATA.assignments[k] === t.name && k.endsWith('|' + sub)) {
+                    const classId = k.split('|')[0];
+                    let matchingLevel = null;
+                    DATA.structure.forEach(lvl => {
+                        if (classId.startsWith(getLevelPrefix(lvl.level))) {
+                            matchingLevel = lvl.level;
+                        }
+                    });
+                    if (matchingLevel) {
+                        const isOv = DATA.classOverrides && DATA.classOverrides[classId] && DATA.classOverrides[classId][sub];
+                        const cfg = isOv ? DATA.classOverrides[classId][sub] : (DATA.levelConfig[matchingLevel] ? DATA.levelConfig[matchingLevel][sub] : null);
+                        if (cfg) {
+                            assignedHrs += ((parseFloat(cfg.base)||0) + (parseFloat(cfg.marge)||0)) * (parseFloat(cfg.coef)||1);
+                        }
+                    }
+                }
+            });
+            return { ...t, idx: idx, assignedInSub: assignedHrs };
+        }).filter(t => t.subject === sub || t.assignedInSub > 0);
+        
+        const hp = apports[sub] ? apports[sub].hp : 0;
+        const hsa = apports[sub] ? apports[sub].hsa : 0;
+        const dechInt = profs.filter(t => t.subject === sub).reduce((a,t)=>a+(t.decharge||0), 0);
         const bes = (needs[sub] || 0) + dechInt;
         const app = hp + hsa;
         return { bes, app, hp, hsa, profs };
@@ -1318,7 +1482,7 @@ function renderRHDisc() {
 
     roots.forEach(r => {
         const rStats = getStats(r);
-        const safeR = r.replace(/'/g, "\\'");
+        const safeR = r.replace(/'/g, "\'");
         const kids = DATA.subjects.filter(s => DATA.subjectMeta[s]?.parent === r);
         
         if (kids.length > 0) {
@@ -1338,7 +1502,6 @@ function renderRHDisc() {
 
             const soldePole = poleApp - poleBes;
             
-            // EN-TÊTE PÔLE (Gris Anthracite)
             tBody.innerHTML += `<tr class="row-header">
                 <td style="text-align:left; padding-left:10px;">📦 PÔLE ${r.toUpperCase()}</td>
                 <td style="color:#f1c40f;">${poleBes.toFixed(1)}</td>
@@ -1351,11 +1514,10 @@ function renderRHDisc() {
             renderSubjectRow(r, rStats, true, `↳ ${r}`, safeR);
 
             kidsData.forEach(kd => {
-                renderSubjectRow(kd.name, kd.stats, true, `↳ ${kd.name}`, kd.name.replace(/'/g, "\\'"));
+                renderSubjectRow(kd.name, kd.stats, true, `↳ ${kd.name}`, kd.name.replace(/'/g, "\'"));
             });
 
         } else {
-            // MATIÈRE SOLO (Style En-tête Gris aussi)
             renderSubjectRow(r, rStats, false, r, safeR, true);
         }
     });
@@ -1388,31 +1550,26 @@ function renderRHDisc() {
 
         stats.profs.forEach(p => {
             let detailsTxt = "";
+            const isPrimary = (p.subject === name);
+            const alloc = getTeacherAllocationInSubject(p, p.idx, name);
             
-            // --- RESTAURATION : BADGES CLIQUABLES AVEC CRAYON ---
-            
-            // 1. BMP (Si > 0)
             if(p.bmp > 0) {
                 detailsTxt += `<div onclick="setBMP(${p.idx})" title="Modifier le volume du BMP" style="cursor:pointer; background:#ebf5fb; border:1px solid #aed6f1; color:#2c3e50; font-size:0.75rem; font-weight:bold; margin-top:2px; padding:2px 5px; border-radius:4px; display:inline-flex; align-items:center; gap:5px;">
                    <span>★ BMP : ${p.bmp}h</span> <span>✏️</span>
                 </div><br>`;
             }
             
-            // 2. CSD (Si > 0)
             if(p.csd > 0) {
                 detailsTxt += `<div onclick="setCSD(${p.idx})" title="Modifier le volume CSD" style="cursor:pointer; background:#fdf2e9; border:1px solid #fad7a0; color:#e67e22; font-size:0.75rem; font-weight:bold; margin-top:2px; padding:2px 5px; border-radius:4px; display:inline-flex; align-items:center; gap:5px;">
                    <span>(Dont ${p.csd}h CSD)</span> <span>✏️</span>
                 </div><br>`;
             }
 
-            // (Autres décharges : informatif seulement pour l'instant)
             if(p.decharge > 0) detailsTxt += `<span style="color:#8e44ad; font-size:0.7rem; display:block; margin-top:2px;">(Dont ${p.decharge}h DGH)</span>`;
             if(p.dech_ext > 0) detailsTxt += `<span style="color:#27ae60; font-size:0.7rem; display:block; margin-top:2px;">(Dont ${p.dech_ext}h Rect.)</span>`;
 
-            const realContribution = (p.ors - (p.csd||0) - (p.dech_ext||0)) + p.hsa;
             const paddingProf = isChild ? 'padding-left:50px;' : 'padding-left:30px;';
 
-            // Boutons d'ajout (colonne 1) : Masqués si valeur déjà saisie
             const btnBmp = (p.bmp > 0) 
                 ? '' 
                 : `<button onclick="setBMP(${p.idx})" style="cursor:pointer; background:#34495e; color:white; border:none; border-radius:3px; padding:1px 5px; font-size:0.65rem; margin-left:5px;" title="Définir BMP">BMP ?</button>`;
@@ -1421,42 +1578,48 @@ function renderRHDisc() {
                 ? '' 
                 : `<button onclick="setCSD(${p.idx})" style="cursor:pointer; background:#17a2b8; color:white; border:none; border-radius:3px; padding:1px 5px; font-size:0.65rem; margin-left:5px;" title="Définir CSD">CSD ?</button>`;
 
+            let nameHTML = `<input type="text" value="${p.name}" onchange="updT(${p.idx},'name',this.value)" style="border:none; border-bottom:1px dashed #bdc3c7; background:transparent; width:140px; color:#2c3e50; font-weight:500;" placeholder="Nom">`;
+            if (!isPrimary) {
+                nameHTML = `<span style="font-weight:600; color:#2980b9;">${p.name}</span> <span style="font-size:0.7rem; background:#ebf5fb; color:#2980b9; padding:1px 4px; border-radius:3px; margin-left:5px;">Interne</span>`;
+            }
+            
+            let hpInput = `<input type="number" class="input-inline" value="${p.ors}" step="0.5" onchange="updT(${p.idx},'ors',this.value)">`;
+            let hsaInput = `<input type="number" class="input-inline" value="${p.hsa}" step="0.5" onchange="updT(${p.idx},'hsa',this.value)">`;
+            
+            if (!isPrimary) {
+                hpInput = `<span style="font-weight:bold; color:#2c3e50;">${alloc.hp.toFixed(1)}</span> <span style="font-size:0.65rem; color:#7f8c8d;">(HP)</span>`;
+                hsaInput = `<span style="font-weight:bold; color:#2c3e50;">${alloc.hsa.toFixed(1)}</span> <span style="font-size:0.65rem; color:#7f8c8d;">(HSA)</span>`;
+            }
+
             tBody.innerHTML += `<tr class="row-detail">
                 <td style="${paddingProf} text-align:left; display:flex; align-items:center;">
                     <span style="color:#bdc3c7; margin-right:5px;">↳</span>
-                    <input type="text" value="${p.name}" onchange="updT(${p.idx},'name',this.value)" style="border:none; border-bottom:1px dashed #bdc3c7; background:transparent; width:140px; color:#2c3e50; font-weight:500;" placeholder="Nom">
-                    ${btnBmp} ${btnCsd}
+                    ${nameHTML}
+                    ${isPrimary ? btnBmp + " " + btnCsd : ""}
                     <span style="font-size:0.75rem; color:#999; margin-left:5px;">(${p.status})</span>
                 </td>
                 <td colspan="2"></td>
                 <td>
-                    <input type="number" class="input-inline" value="${p.ors}" step="0.5" onchange="updT(${p.idx},'ors',this.value)">
-                    <div style="display:flex; flex-direction:column; align-items:center;">${detailsTxt}</div>
+                    ${hpInput}
+                    <div style="display:flex; flex-direction:column; align-items:center;">${isPrimary ? detailsTxt : ""}</div>
                 </td>
-                <td><input type="number" class="input-inline" value="${p.hsa}" step="0.5" onchange="updT(${p.idx},'hsa',this.value)"></td>
-                <td style="font-weight:bold; color:#7f8c8d;">${realContribution.toFixed(1)}</td>
+                <td>${hsaInput}</td>
+                <td style="font-weight:bold; color:#7f8c8d;">${alloc.total.toFixed(1)}</td>
             </tr>`;
         });
     }
     
-    // Totaux
     let realHP=0, realHSA=0, realBesoin = 0; 
+    Object.keys(apports).forEach(s => {
+        realHP += apports[s].hp;
+        realHSA += apports[s].hsa;
+    });
     DATA.teachers.forEach(t=>{ 
-        realHP += (t.ors - (t.csd||0) - (t.dech_ext||0)); 
-        realHSA += t.hsa; 
         realBesoin += (t.decharge || 0);
     });
     Object.values(needs).forEach(v=>realBesoin+=v);
     const realApport = realHP + realHSA;
-
-    tFoot.innerHTML = `<td>TOTAUX GÉNÉRAUX</td>
-        <td>${realBesoin.toFixed(1)}</td>
-        <td>${realApport.toFixed(1)}</td>
-        <td>HP:${realHP.toFixed(1)}</td>
-        <td>HSA:${realHSA.toFixed(1)}</td>
-        <td style="background:${(realApport-realBesoin)>=0?'var(--success)':'var(--danger)'}; color:white;">${(realApport-realBesoin).toFixed(1)}</td>`;
 }
-
 function updateYear(v){ DATA.config.year=parseInt(v); saveData(); }
 function updateGlobalDHG(){ DATA.config.hp=parseFloat(document.getElementById('global-hp').value); DATA.config.hsa=parseFloat(document.getElementById('global-hsa').value); saveData(); calculateRecap(); }
 function saveData(a){ 
