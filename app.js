@@ -5784,6 +5784,55 @@ function getBaselineScenarioId() {
     return localStorage.getItem('DHG_Baseline_Scenario_ID') || null;
 }
 
+// --- ALGORITHME DE CALCUL DU SCORE DE QUALITÉ (SUR 100) ---
+function calculateQualityScore(sData) {
+    if (!sData) return 0;
+    
+    // 1. Part des HSA (30 pts)
+    // Cible : moins de 10% HSA = 30 pts. Au-delà de 30% HSA = 0 pts.
+    const totalDHG = parseFloat(sData.config.total) || 1;
+    const hsa = parseFloat(sData.config.hsa) || 0;
+    const hsaPercent = (hsa / totalDHG) * 100;
+    let scoreHSA = 0;
+    if (hsaPercent <= 10) scoreHSA = 30;
+    else if (hsaPercent >= 30) scoreHSA = 0;
+    else scoreHSA = 30 - ((hsaPercent - 10) * 1.5);
+    
+    // 2. Taux d'encadrement moyen (E/D) (30 pts)
+    // Cible : moyenne <= 24 élèves/classe = 30 pts. Si moyenne >= 30 = 0 pts.
+    let totalStudents = 0, totalDiv = 0;
+    sData.structure.forEach(lvl => {
+        totalStudents += parseInt(lvl.students) || 0;
+        totalDiv += parseInt(lvl.div) || 0;
+    });
+    const avgED = totalDiv > 0 ? (totalStudents / totalDiv) : 30;
+    let scoreED = 0;
+    if (avgED <= 24) scoreED = 30;
+    else if (avgED >= 30) scoreED = 0;
+    else scoreED = 30 - ((avgED - 24) * 5);
+    
+    // 3. Marge de sécurité (Solde) (20 pts)
+    // Cible : solde >= 0 = 20 pts. Si solde <= -15h = 0 pts.
+    // Pour estimer la consommation
+    let scoreMarge = 0;
+    // Simuler le solde
+    const currentMarge = sData.marge !== undefined ? sData.marge : 0;
+    if (currentMarge >= 0) scoreMarge = 20;
+    else if (currentMarge <= -15) scoreMarge = 0;
+    else scoreMarge = 20 - (Math.abs(currentMarge) * 1.33);
+    
+    // 4. Couverture disciplinaire (Heures vacantes) (20 pts)
+    // Cible : 0 heure déficitaire. Retirer 4 pts par heure manquante.
+    let scoreDeficits = 20;
+    // On estime arbitrairement à 20 points si équilibré.
+    if (currentMarge < 0) {
+        scoreDeficits = Math.max(0, 20 - (Math.abs(currentMarge) * 2));
+    }
+    
+    const finalScore = Math.round(scoreHSA + scoreED + scoreMarge + scoreDeficits);
+    return Math.min(100, Math.max(0, finalScore));
+}
+
 function saveCurrentScenario() {
     const name = prompt("Nom du scénario ? (ex: Scénario A - Marge 3ème)");
     if (!name) return;
@@ -5808,6 +5857,8 @@ function saveCurrentScenario() {
         data: JSON.parse(JSON.stringify(DATA))
     };
     
+    scenario.score = calculateQualityScore(scenario);
+    
     scenarios.push(scenario);
     localStorage.setItem('DHG_Scenarios', JSON.stringify(scenarios));
     renderScenariosTable();
@@ -5831,7 +5882,6 @@ function duplicateScenario(id) {
 function setBaselineScenario(id) {
     const currentBaseline = getBaselineScenarioId();
     if (currentBaseline == id) {
-        // Toggle baseline off
         localStorage.removeItem('DHG_Baseline_Scenario_ID');
     } else {
         localStorage.setItem('DHG_Baseline_Scenario_ID', id);
@@ -5872,13 +5922,62 @@ function clearScenarios() {
     renderScenariosTable();
 }
 
+// Variables pour garder l'instance du graphique des scénarios
+let scenariosChartInstance = null;
+
+function drawScenariosChart() {
+    const canvas = document.getElementById('scenariosChart');
+    if (!canvas) return;
+    
+    const scenarios = getScenarios();
+    if (scenarios.length === 0) {
+        if (scenariosChartInstance) scenariosChartInstance.destroy();
+        return;
+    }
+    
+    const labels = scenarios.map(s => s.name);
+    const dataMarges = scenarios.map(s => s.marge);
+    const colors = scenarios.map(s => s.marge >= 0 ? '#27ae60' : '#c0392b');
+    
+    if (scenariosChartInstance) {
+        scenariosChartInstance.destroy();
+    }
+    
+    scenariosChartInstance = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Marge / Solde de DHG (heures)',
+                data: dataMarges,
+                backgroundColor: colors,
+                borderColor: colors,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            },
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+}
+
 function renderScenariosTable() {
     const tbody = document.getElementById('scenarios-comparison-body');
     if (!tbody) return;
     
     const scenarios = getScenarios();
     if (scenarios.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" style="color:var(--text-muted); font-style:italic;">Aucun scénario enregistré pour le moment.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" style="color:var(--text-muted); font-style:italic;">Aucun scénario enregistré pour le moment.</td></tr>`;
+        if (scenariosChartInstance) scenariosChartInstance.destroy();
         return;
     }
     
@@ -5892,7 +5991,17 @@ function renderScenariosTable() {
             statusHTML = `<span style="background:var(--success); color:white; padding:2px 8px; border-radius:10px; font-size:0.75rem; font-weight:bold;">👑 Référence</span>`;
         }
         
-        // Calcul des Deltas si baseline définie
+        // Recalculer le score s'il est manquant
+        const score = s.score !== undefined ? s.score : calculateQualityScore(s);
+        let scoreHTML = ``;
+        if (score >= 80) {
+            scoreHTML = `<span style="background:rgba(39, 174, 96, 0.1); color:var(--success); padding:4px 8px; border-radius:4px; font-weight:bold; font-size:0.85rem;">${score} / 100</span>`;
+        } else if (score >= 50) {
+            scoreHTML = `<span style="background:rgba(230, 126, 34, 0.1); color:var(--accent); padding:4px 8px; border-radius:4px; font-weight:bold; font-size:0.85rem;">${score} / 100</span>`;
+        } else {
+            scoreHTML = `<span style="background:rgba(192, 57, 43, 0.1); color:var(--danger); padding:4px 8px; border-radius:4px; font-weight:bold; font-size:0.85rem;">${score} / 100</span>`;
+        }
+        
         let deltaMargeText = "";
         if (baseline && !isBaseline) {
             const diff = s.marge - baseline.marge;
@@ -5907,6 +6016,7 @@ function renderScenariosTable() {
                 ${s.notes ? `<div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">📝 ${s.notes}</div>` : ""}
             </td>
             <td>${statusHTML}</td>
+            <td>${scoreHTML}</td>
             <td>${s.dhg.toFixed(1)} h</td>
             <td>${s.divisions} cls</td>
             <td>${s.conso.toFixed(1)} h</td>
@@ -5924,6 +6034,55 @@ function renderScenariosTable() {
             </td>
         </tr>`;
     }).join('');
+    
+    // Dessiner le graphique
+    setTimeout(drawScenariosChart, 100);
+}
+
+// --- EXPORT PDF COMPARATIF DES SCÉNARIOS (SÉCURISÉ) ---
+function exportScenariosPDF() {
+    const scenarios = getScenarios();
+    if (scenarios.length === 0) return alert("Aucun scénario à exporter.");
+    
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.width;
+    
+    // Titre Document
+    doc.setFillColor(44, 62, 80);
+    doc.rect(0, 0, pageWidth, 25, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("NOTE DE SYNTHÈSE DES SCÉNARIOS - CONSEIL D'ADMINISTRATION", pageWidth/2, 16, { align: 'center' });
+    
+    // Tableau Comparatif
+    const baselineId = getBaselineScenarioId();
+    const rows = scenarios.map(s => {
+        const isBaseline = s.id == baselineId;
+        const score = s.score !== undefined ? s.score : calculateQualityScore(s);
+        return [
+            s.name + (isBaseline ? " (Référence)" : ""),
+            score + " / 100",
+            s.dhg.toFixed(1) + " h",
+            s.divisions + " cls",
+            s.conso.toFixed(1) + " h",
+            s.hsaPercent,
+            s.marge.toFixed(1) + " h",
+            s.notes || "-"
+        ];
+    });
+    
+    doc.autoTable({
+        startY: 35,
+        head: [['Nom du Scénario', 'Indice Qualité', 'DHG', 'Classes', 'Consommation', 'Part HSA', 'Solde / Marge', 'Commentaires stratégiques']],
+        body: rows,
+        theme: 'striped',
+        headStyles: { fillColor: [44, 62, 80] },
+        styles: { fontSize: 9 }
+    });
+    
+    doc.save(`Note_Synthese_Scenarios_CA.pdf`);
 }
 
 // --- VISUALISATION CÔTE À CÔTE DES SCÉNARIOS ---
@@ -5946,7 +6105,6 @@ function openComparisonModal() {
         selectB.add(new Option(s.name, s.id));
     });
     
-    // Select different ones by default
     selectB.selectedIndex = 1;
     
     document.getElementById('comparison-modal-overlay').style.display = 'flex';
@@ -5973,8 +6131,11 @@ function renderComparisonResult() {
     document.getElementById('compare-name-a').innerText = sA.name;
     document.getElementById('compare-name-b').innerText = sB.name;
     
-    // Calculate metrics
+    const scoreA = sA.score !== undefined ? sA.score : calculateQualityScore(sA);
+    const scoreB = sB.score !== undefined ? sB.score : calculateQualityScore(sB);
+    
     const metrics = [
+        { label: "Indice de Qualité Pédagogique", valA: scoreA, valB: scoreB, unit: " / 100", dec: 0 },
         { label: "Dotation globale (DHG)", valA: sA.dhg, valB: sB.dhg, unit: " h", dec: 1 },
         { label: "Divisions (Classes)", valA: sA.divisions, valB: sB.divisions, unit: " classes", dec: 0 },
         { label: "Consommation horaire", valA: sA.conso, valB: sB.conso, unit: " h", dec: 1 },

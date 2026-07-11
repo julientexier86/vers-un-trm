@@ -275,6 +275,7 @@
             <div class="card-header">
                 <h3>Comparateur de Scénarios</h3>
                 <div style="display:flex; gap:10px;">
+                    <button class="btn btn-dark btn-sm" onclick="exportScenariosPDF()" title="Générer une note de synthèse A4 pour le Conseil d'Administration">📄 PDF Spécial CA</button>
                     <button class="btn btn-purple btn-sm" onclick="openComparisonModal()">⚖️ Comparer Côte à Côte</button>
                     <button class="btn btn-primary btn-sm" onclick="saveCurrentScenario()">💾 Enregistrer Scénario</button>
                     <button class="btn btn-danger btn-sm" onclick="clearScenarios()">🗑️ Réinitialiser</button>
@@ -287,8 +288,9 @@
                 <table class="table" style="margin-top:10px;">
                     <thead>
                         <tr>
-                            <th style="text-align:left; width:35%;">Nom & Notes du Scénario</th>
+                            <th style="text-align:left; width:30%;">Nom & Notes du Scénario</th>
                             <th>Statut / Réf.</th>
+                            <th>Indice Qualité</th>
                             <th>Dotation (DHG)</th>
                             <th>Classes (Divisions)</th>
                             <th>Heures Utilisées (Conso)</th>
@@ -302,6 +304,11 @@
                     </tbody>
                 </table>
             </div>
+            <!-- Scenarios comparative Chart -->
+            <div style="height:220px; position:relative; width:100%; margin-top:20px; border-top:1px solid var(--border-color); padding-top:15px;" id="scenarios-chart-container">
+                <canvas id="scenariosChart"></canvas>
+            </div>
+
         </div>
 </div>
         </div>
