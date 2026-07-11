@@ -2694,7 +2694,7 @@ function exportRepartitionMatierePDF() {
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(10);
         doc.setFont("helvetica", "bold");
-        doc.text(`DHG MANAGER - RÉPARTITION : ${title.toUpperCase()}`, margin, 10);
+        doc.text(`VERS UN TRM - RÉPARTITION : ${title.toUpperCase()}`, margin, 10);
         doc.text(`Année ${DATA.config.year}`, pageWidth - margin, 10, { align: 'right' });
         cursorY = 25;
     };
@@ -2911,7 +2911,7 @@ function generateRepartitionProfsPDF() {
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(10);
         doc.setFont("helvetica", "bold");
-        doc.text(`DHG MANAGER - RÉPARTITION PAR ENSEIGNANT`, margin, 10);
+        doc.text(`VERS UN TRM - RÉPARTITION PAR ENSEIGNANT`, margin, 10);
         doc.text(`Année ${DATA.config.year}`, pageWidth - margin, 10, { align: 'right' });
         cursorY = 25;
     };
