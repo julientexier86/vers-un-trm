@@ -5784,14 +5784,47 @@ function getBaselineScenarioId() {
     return localStorage.getItem('DHG_Baseline_Scenario_ID') || null;
 }
 
+// --- DÉTECTION DES POSTES INCOMPLETS (SOUS-SERVICE) ---
+function countIncompletePosts(sData) {
+    const dataObj = sData ? sData.data : DATA;
+    if (!dataObj || !dataObj.teachers) return { count: 0, totalHours: 0 };
+    
+    let incompleteCount = 0;
+    let totalMissingHours = 0;
+    
+    dataObj.teachers.forEach((p, tIdx) => {
+        const csd = parseFloat(p.csd || 0);
+        const dechInt = parseFloat(p.decharge || 0);
+        const dechExt = parseFloat(p.dech_ext || 0);
+        const ors = parseFloat(p.ors || 0);
+        
+        // Obligation réglementaire dans l'établissement
+        const expectedORS = ors - csd - dechExt - dechInt;
+        
+        let assignedORS = 0;
+        const assignments = dataObj.assignments || {};
+        Object.keys(assignments).forEach(key => {
+            if (key.endsWith('_' + tIdx)) {
+                assignedORS += parseFloat(assignments[key].quota) || 0;
+            }
+        });
+        
+        if (assignedORS < expectedORS) {
+            incompleteCount++;
+            totalMissingHours += (expectedORS - assignedORS);
+        }
+    });
+    
+    return { count: incompleteCount, totalHours: totalMissingHours };
+}
+
 // --- ALGORITHME DE CALCUL DU SCORE DE QUALITÉ (SUR 100) ---
 function calculateQualityScore(sData) {
     if (!sData) return 0;
     
     // 1. Part des HSA (30 pts)
-    // Cible : moins de 10% HSA = 30 pts. Au-delà de 30% HSA = 0 pts.
-    const totalDHG = parseFloat(sData.config.total) || 1;
-    const hsa = parseFloat(sData.config.hsa) || 0;
+    const totalDHG = parseFloat(sData.config ? sData.config.total : sData.dhg) || 1;
+    const hsa = parseFloat(sData.config ? sData.config.hsa : (sData.data ? sData.data.config.hsa : 0)) || 0;
     const hsaPercent = (hsa / totalDHG) * 100;
     let scoreHSA = 0;
     if (hsaPercent <= 10) scoreHSA = 30;
@@ -5799,9 +5832,9 @@ function calculateQualityScore(sData) {
     else scoreHSA = 30 - ((hsaPercent - 10) * 1.5);
     
     // 2. Taux d'encadrement moyen (E/D) (30 pts)
-    // Cible : moyenne <= 24 élèves/classe = 30 pts. Si moyenne >= 30 = 0 pts.
     let totalStudents = 0, totalDiv = 0;
-    sData.structure.forEach(lvl => {
+    const structureObj = sData.structure || (sData.data ? sData.data.structure : []);
+    structureObj.forEach(lvl => {
         totalStudents += parseInt(lvl.students) || 0;
         totalDiv += parseInt(lvl.div) || 0;
     });
@@ -5812,24 +5845,23 @@ function calculateQualityScore(sData) {
     else scoreED = 30 - ((avgED - 24) * 5);
     
     // 3. Marge de sécurité (Solde) (20 pts)
-    // Cible : solde >= 0 = 20 pts. Si solde <= -15h = 0 pts.
-    // Pour estimer la consommation
     let scoreMarge = 0;
-    // Simuler le solde
     const currentMarge = sData.marge !== undefined ? sData.marge : 0;
     if (currentMarge >= 0) scoreMarge = 20;
     else if (currentMarge <= -15) scoreMarge = 0;
     else scoreMarge = 20 - (Math.abs(currentMarge) * 1.33);
     
-    // 4. Couverture disciplinaire (Heures vacantes) (20 pts)
-    // Cible : 0 heure déficitaire. Retirer 4 pts par heure manquante.
+    // 4. Couverture disciplinaire (20 pts)
     let scoreDeficits = 20;
-    // On estime arbitrairement à 20 points si équilibré.
     if (currentMarge < 0) {
         scoreDeficits = Math.max(0, 20 - (Math.abs(currentMarge) * 2));
     }
     
-    const finalScore = Math.round(scoreHSA + scoreED + scoreMarge + scoreDeficits);
+    // 5. PÉNALITÉ : Postes incomplets (déduction de 5 pts par poste)
+    const incObj = countIncompletePosts(sData);
+    const penaltyInc = Math.min(20, incObj.count * 5);
+    
+    const finalScore = Math.round(scoreHSA + scoreED + scoreMarge + scoreDeficits - penaltyInc);
     return Math.min(100, Math.max(0, finalScore));
 }
 
@@ -5922,7 +5954,6 @@ function clearScenarios() {
     renderScenariosTable();
 }
 
-// Variables pour garder l'instance du graphique des scénarios
 let scenariosChartInstance = null;
 
 function drawScenariosChart() {
@@ -5991,8 +6022,7 @@ function renderScenariosTable() {
             statusHTML = `<span style="background:var(--success); color:white; padding:2px 8px; border-radius:10px; font-size:0.75rem; font-weight:bold;">👑 Référence</span>`;
         }
         
-        // Recalculer le score s'il est manquant
-        const score = s.score !== undefined ? s.score : calculateQualityScore(s);
+        const score = calculateQualityScore(s);
         let scoreHTML = ``;
         if (score >= 80) {
             scoreHTML = `<span style="background:rgba(39, 174, 96, 0.1); color:var(--success); padding:4px 8px; border-radius:4px; font-weight:bold; font-size:0.85rem;">${score} / 100</span>`;
@@ -6010,10 +6040,15 @@ function renderScenariosTable() {
         
         let margeColor = s.marge >= 0 ? 'var(--success)' : 'var(--danger)';
         
+        // Calculer les postes non complets pour affichage mémo
+        const incObj = countIncompletePosts(s);
+        const incHTML = incObj.count > 0 ? `<div style="font-size:0.8rem; color:var(--danger); margin-top:2px; font-weight:bold;">⚠️ ${incObj.count} poste(s) incomplet(s) (-${incObj.totalHours.toFixed(1)}h)</div>` : "";
+        
         return `<tr>
             <td style="text-align:left;">
                 <strong>${s.name}</strong>
                 ${s.notes ? `<div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">📝 ${s.notes}</div>` : ""}
+                ${incHTML}
             </td>
             <td>${statusHTML}</td>
             <td>${scoreHTML}</td>
@@ -6035,11 +6070,10 @@ function renderScenariosTable() {
         </tr>`;
     }).join('');
     
-    // Dessiner le graphique
     setTimeout(drawScenariosChart, 100);
 }
 
-// --- EXPORT PDF COMPARATIF DES SCÉNARIOS (SÉCURISÉ) ---
+// --- EXPORT PDF CA ---
 function exportScenariosPDF() {
     const scenarios = getScenarios();
     if (scenarios.length === 0) return alert("Aucun scénario à exporter.");
@@ -6048,7 +6082,6 @@ function exportScenariosPDF() {
     const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
     const pageWidth = doc.internal.pageSize.width;
     
-    // Titre Document
     doc.setFillColor(44, 62, 80);
     doc.rect(0, 0, pageWidth, 25, 'F');
     doc.setTextColor(255, 255, 255);
@@ -6056,14 +6089,16 @@ function exportScenariosPDF() {
     doc.setFont("helvetica", "bold");
     doc.text("NOTE DE SYNTHÈSE DES SCÉNARIOS - CONSEIL D'ADMINISTRATION", pageWidth/2, 16, { align: 'center' });
     
-    // Tableau Comparatif
     const baselineId = getBaselineScenarioId();
     const rows = scenarios.map(s => {
         const isBaseline = s.id == baselineId;
-        const score = s.score !== undefined ? s.score : calculateQualityScore(s);
+        const score = calculateQualityScore(s);
+        const incObj = countIncompletePosts(s);
+        const incText = incObj.count > 0 ? `${incObj.count} poste(s) (${incObj.totalHours.toFixed(1)}h)` : "Aucun";
         return [
             s.name + (isBaseline ? " (Référence)" : ""),
             score + " / 100",
+            incText,
             s.dhg.toFixed(1) + " h",
             s.divisions + " cls",
             s.conso.toFixed(1) + " h",
@@ -6075,17 +6110,17 @@ function exportScenariosPDF() {
     
     doc.autoTable({
         startY: 35,
-        head: [['Nom du Scénario', 'Indice Qualité', 'DHG', 'Classes', 'Consommation', 'Part HSA', 'Solde / Marge', 'Commentaires stratégiques']],
+        head: [['Nom du Scénario', 'Indice Qualité', 'Postes Incomplets', 'DHG', 'Classes', 'Consommation', 'Part HSA', 'Solde / Marge', 'Commentaires']],
         body: rows,
         theme: 'striped',
         headStyles: { fillColor: [44, 62, 80] },
-        styles: { fontSize: 9 }
+        styles: { fontSize: 8.5 }
     });
     
     doc.save(`Note_Synthese_Scenarios_CA.pdf`);
 }
 
-// --- VISUALISATION CÔTE À CÔTE DES SCÉNARIOS ---
+// --- VISUALISATION CÔTE À CÔTE ---
 function openComparisonModal() {
     const scenarios = getScenarios();
     if (scenarios.length < 2) {
@@ -6131,11 +6166,15 @@ function renderComparisonResult() {
     document.getElementById('compare-name-a').innerText = sA.name;
     document.getElementById('compare-name-b').innerText = sB.name;
     
-    const scoreA = sA.score !== undefined ? sA.score : calculateQualityScore(sA);
-    const scoreB = sB.score !== undefined ? sB.score : calculateQualityScore(sB);
+    const scoreA = calculateQualityScore(sA);
+    const scoreB = calculateQualityScore(sB);
+    const incA = countIncompletePosts(sA);
+    const incB = countIncompletePosts(sB);
     
     const metrics = [
         { label: "Indice de Qualité Pédagogique", valA: scoreA, valB: scoreB, unit: " / 100", dec: 0 },
+        { label: "Postes non complets (sous-services)", valA: incA.count, valB: incB.count, unit: " poste(s)", dec: 0 },
+        { label: "Volume de sous-service global", valA: incA.totalHours, valB: incB.totalHours, unit: " h", dec: 1 },
         { label: "Dotation globale (DHG)", valA: sA.dhg, valB: sB.dhg, unit: " h", dec: 1 },
         { label: "Divisions (Classes)", valA: sA.divisions, valB: sB.divisions, unit: " classes", dec: 0 },
         { label: "Consommation horaire", valA: sA.conso, valB: sB.conso, unit: " h", dec: 1 },
