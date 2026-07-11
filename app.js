@@ -5780,9 +5780,14 @@ function getScenarios() {
     }
 }
 
+function getBaselineScenarioId() {
+    return localStorage.getItem('DHG_Baseline_Scenario_ID') || null;
+}
+
 function saveCurrentScenario() {
-    const name = prompt("Nom du scénario ? (ex: Version 1 - 12 classes)");
+    const name = prompt("Nom du scénario ? (ex: Scénario A - Marge 3ème)");
     if (!name) return;
+    const notes = prompt("Notes stratégiques / Commentaires ? (Optionnel)", "");
     
     const scenarios = getScenarios();
     const currentConso = parseFloat(document.getElementById('dash-conso')?.innerText) || 0;
@@ -5793,22 +5798,45 @@ function saveCurrentScenario() {
     const scenario = {
         id: Date.now(),
         name: name,
+        notes: notes || "",
         dhg: DATA.config.total,
         divisions: currentTotalDiv,
         conso: currentConso,
         hsaPercent: hsaPercent,
         marge: currentMarge,
-        date: new Date().toLocaleString('fr-FR'),
+        date: new Date().toLocaleDateString('fr-FR'),
         data: JSON.parse(JSON.stringify(DATA))
     };
     
     scenarios.push(scenario);
     localStorage.setItem('DHG_Scenarios', JSON.stringify(scenarios));
     renderScenariosTable();
-        calculateBudget();
-        renderDiagnosticTable();
-        calculateRoomsOccupancy();
-        runStressTest(document.getElementById('stress-test-input')?.value || -10);
+}
+
+function duplicateScenario(id) {
+    const scenarios = getScenarios();
+    const found = scenarios.find(s => s.id === id);
+    if (!found) return;
+    
+    const clone = JSON.parse(JSON.stringify(found));
+    clone.id = Date.now();
+    clone.name = found.name + " (Copie)";
+    clone.date = new Date().toLocaleDateString('fr-FR');
+    
+    scenarios.push(clone);
+    localStorage.setItem('DHG_Scenarios', JSON.stringify(scenarios));
+    renderScenariosTable();
+}
+
+function setBaselineScenario(id) {
+    const currentBaseline = getBaselineScenarioId();
+    if (currentBaseline == id) {
+        // Toggle baseline off
+        localStorage.removeItem('DHG_Baseline_Scenario_ID');
+    } else {
+        localStorage.setItem('DHG_Baseline_Scenario_ID', id);
+    }
+    renderScenariosTable();
 }
 
 function deleteScenario(id) {
@@ -5816,11 +5844,13 @@ function deleteScenario(id) {
     let scenarios = getScenarios();
     scenarios = scenarios.filter(s => s.id !== id);
     localStorage.setItem('DHG_Scenarios', JSON.stringify(scenarios));
+    
+    const baselineId = getBaselineScenarioId();
+    if (baselineId == id) {
+        localStorage.removeItem('DHG_Baseline_Scenario_ID');
+    }
+    
     renderScenariosTable();
-        calculateBudget();
-        renderDiagnosticTable();
-        calculateRoomsOccupancy();
-        runStressTest(document.getElementById('stress-test-input')?.value || -10);
 }
 
 function loadScenario(id) {
@@ -5838,11 +5868,8 @@ function loadScenario(id) {
 function clearScenarios() {
     if (!confirm("Voulez-vous réinitialiser tous les scénarios comparatifs ?")) return;
     localStorage.removeItem('DHG_Scenarios');
+    localStorage.removeItem('DHG_Baseline_Scenario_ID');
     renderScenariosTable();
-        calculateBudget();
-        renderDiagnosticTable();
-        calculateRoomsOccupancy();
-        runStressTest(document.getElementById('stress-test-input')?.value || -10);
 }
 
 function renderScenariosTable() {
@@ -5855,450 +5882,43 @@ function renderScenariosTable() {
         return;
     }
     
+    const baselineId = getBaselineScenarioId();
+    const baseline = scenarios.find(s => s.id == baselineId);
+    
     tbody.innerHTML = scenarios.map(s => {
+        const isBaseline = s.id == baselineId;
+        let statusHTML = `<button class="btn btn-sm btn-outline" style="font-size:0.75rem; padding:2px 6px;" onclick="setBaselineScenario(${s.id})">📌 Réf.</button>`;
+        if (isBaseline) {
+            statusHTML = `<span style="background:var(--success); color:white; padding:2px 8px; border-radius:10px; font-size:0.75rem; font-weight:bold;">👑 Référence</span>`;
+        }
+        
+        // Calcul des Deltas si baseline définie
+        let deltaMargeText = "";
+        if (baseline && !isBaseline) {
+            const diff = s.marge - baseline.marge;
+            deltaMargeText = ` <small style="color:${diff >= 0 ? 'var(--success)' : 'var(--danger)'}; font-weight:bold;">(${diff >= 0 ? '+' : ''}${diff.toFixed(1)}h)</small>`;
+        }
+        
         let margeColor = s.marge >= 0 ? 'var(--success)' : 'var(--danger)';
+        
         return `<tr>
-            <td><strong>${s.name}</strong></td>
-            <td>${s.dhg.toFixed(1)} h</td>
-            <td>${s.divisions} classes</td>
-            <td>${s.conso.toFixed(1)} h</td>
-            <td>${s.hsaPercent}</td>
-            <td style="color:${margeColor}; font-weight:bold;">${s.marge.toFixed(1)} h</td>
-            <td style="font-size:0.8rem; color:var(--text-muted);">${s.date}</td>
-            <td>
-                <div style="display:flex; gap:5px; justify-content:center;">
-                    <button class="btn btn-sm btn-success" onclick="loadScenario(${s.id})" title="Charger">🔄 Charger</button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteScenario(${s.id})" title="Supprimer">🗑️</button>
-                </div>
+            <td style="text-align:left;">
+                <strong>${s.name}</strong>
+                ${s.notes ? `<div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">📝 ${s.notes}</div>` : ""}
             </td>
-        </tr>`;
-    }).join('');
-}
-
-
-// --- ESTIMATION BUDGÉTAIRE ---
-function calculateBudget() {
-    let costHSA = 0;
-    let costPacte = 0;
-    
-    if (!DATA || !DATA.teachers) return;
-    
-    DATA.teachers.forEach(p => {
-        const hsa = parseFloat(p.hsa) || 0;
-        const pacte = parseInt(p.pacte) || 0;
-        const status = (p.status || "").toLowerCase();
-        
-        if (hsa > 0) {
-            if (status.includes('agrégé') || status.includes('agrege')) {
-                costHSA += hsa * 1800;
-            } else {
-                costHSA += hsa * 1400; // Certifié / contractuel / etc.
-            }
-        }
-        costPacte += pacte * 1250;
-    });
-    
-    const hsaCostElem = document.getElementById('budget-hsa-cost');
-    const pacteCostElem = document.getElementById('budget-pacte-cost');
-    const totalCostElem = document.getElementById('budget-total-cost');
-    
-    if (hsaCostElem) hsaCostElem.innerText = costHSA.toLocaleString('fr-FR');
-    if (pacteCostElem) pacteCostElem.innerText = costPacte.toLocaleString('fr-FR');
-    if (totalCostElem) totalCostElem.innerText = (costHSA + costPacte).toLocaleString('fr-FR');
-}
-
-// --- DIAGNOSTIC DE COUVERTURE ---
-function renderDiagnosticTable() {
-    const tbody = document.getElementById('diagnostic-coverage-body');
-    if (!tbody) return;
-    
-    const needs = (typeof calculateNeeds === 'function') ? calculateNeeds() : {};
-    let res = {}; 
-    
-    if (!DATA || !DATA.subjects) return;
-    
-    DATA.subjects.forEach(s => {
-        res[s] = { cost: 0, dechInt: 0 };
-    }); 
-    
-    DATA.teachers.forEach(p => {
-        if (!p.subject) return;
-        if (!res[p.subject]) res[p.subject] = { cost: 0, dechInt: 0 };
-        
-        const csd = parseFloat(p.csd || 0);
-        const dechInt = parseFloat(p.decharge || 0);
-        const dechExt = parseFloat(p.dech_ext || 0);
-        const ors = parseFloat(p.ors || 0);
-        const hsa = parseFloat(p.hsa || 0);
-        
-        res[p.subject].cost += (ors - csd - dechExt) + hsa;
-        res[p.subject].dechInt += dechInt;
-    }); 
-    
-    const items = [];
-    DATA.subjects.forEach(s => {
-        const stats = res[s] || { cost: 0, dechInt: 0 };
-        const structNeed = needs[s] || 0;
-        const totalNeed = structNeed + stats.dechInt;
-        const apport = stats.cost;
-        const ecart = apport - totalNeed;
-        
-        if (totalNeed > 0 || apport > 0) {
-            items.push({ subject: s, need: totalNeed, apport: apport, ecart: ecart });
-        }
-    });
-    
-    if (items.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="color:var(--text-muted); font-style:italic;">Aucune donnée disponible.</td></tr>`;
-        return;
-    }
-    
-    tbody.innerHTML = items.map(item => {
-        let ecartHTML = "";
-        let statusHTML = "";
-        
-        if (item.ecart < 0) {
-            ecartHTML = `<span style="color:var(--danger); font-weight:bold;">${item.ecart.toFixed(1)} h</span>`;
-            statusHTML = `<span style="background:rgba(192, 57, 43, 0.1); color:var(--danger); padding:4px 8px; border-radius:4px; font-size:0.8rem; font-weight:bold;">⚠️ Déficit (Heures vacantes)</span>`;
-        } else if (item.ecart > 0) {
-            ecartHTML = `<span style="color:var(--success); font-weight:bold;">+${item.ecart.toFixed(1)} h</span>`;
-            statusHTML = `<span style="background:rgba(39, 174, 96, 0.1); color:var(--success); padding:4px 8px; border-radius:4px; font-size:0.8rem; font-weight:bold;">✅ Excédent (Sous-service potentiel)</span>`;
-        } else {
-            ecartHTML = `<span style="color:var(--text-muted); font-weight:bold;">0 h</span>`;
-            statusHTML = `<span style="background:rgba(149, 165, 166, 0.1); color:var(--text-muted); padding:4px 8px; border-radius:4px; font-size:0.8rem;">🎯 Équilibre parfait</span>`;
-        }
-        
-        return `<tr>
-            <td style="text-align:left;"><strong>${item.subject}</strong></td>
-            <td>${item.need.toFixed(1)} h</td>
-            <td>${item.apport.toFixed(1)} h</td>
-            <td>${ecartHTML}</td>
             <td>${statusHTML}</td>
-        </tr>`;
-    }).join('');
-}
-
-// --- OPTIMISEUR DE GROUPES D'EDS ---
-function optimizeEDSGroups(level) {
-    if (!DATA || !DATA.eds || !DATA.eds[level]) return alert("Aucune spécialité configurée pour ce niveau.");
-    
-    const targetInput = prompt("Taille cible moyenne par groupe de spécialité (ex: 28 ou 30) ? ", "28");
-    if (!targetInput) return;
-    const targetSize = parseInt(targetInput);
-    if (isNaN(targetSize) || targetSize <= 0) return alert("Taille invalide.");
-    
-    let updated = false;
-    DATA.eds[level].forEach(e => {
-        const students = parseInt(e.students) || 0;
-        if (students > 0) {
-            const recommendedGroups = Math.ceil(students / targetSize);
-            if (e.groups !== recommendedGroups) {
-                e.groups = recommendedGroups;
-                updated = true;
-            }
-        }
-    });
-    
-    if (updated) {
-        saveData();
-        updateAllAfterStateChange();
-        if (typeof renderEDS === 'function') renderEDS();
-        alert(`✅ Groupes optimisés avec succès pour le niveau ${level === 'premiere' ? 'Première' : 'Terminale'} (cible : ${targetSize} élèves/groupe) !`);
-    } else {
-        alert("Tous les groupes sont déjà optimisés pour cette taille cible.");
-    }
-}
-
-
-// --- CALCUL DE LA PONDÉRATION 1.1 ---
-function getTeacherWeighting(tIdx) {
-    if (!DATA) return 0;
-    if (DATA.type !== 'lgt') return 0;
-    let weightedHours = 0;
-    if (!DATA.assignments) return 0;
-    
-    Object.keys(DATA.assignments).forEach(key => {
-        if (key.endsWith('_' + tIdx)) {
-            const entityId = key.substring(0, key.lastIndexOf('_'));
-            let isTerm = false;
-            if (entityId.startsWith('1') || entityId.startsWith('T') || entityId.toLowerCase().includes('term') || entityId.toLowerCase().includes('1ère')) {
-                isTerm = true;
-            }
-            if (isTerm) {
-                weightedHours += parseFloat(DATA.assignments[key].quota) || 0;
-            }
-        }
-    });
-    return Math.min(weightedHours * 0.1, 1.0); // Capped at 1.0 hour max
-}
-
-// --- ESTIMATION OCCUPATION DES SALLES ---
-function calculateRoomsOccupancy() {
-    const tbody = document.getElementById('rooms-occupancy-body');
-    if (!tbody) return;
-    
-    const needs = (typeof calculateNeeds === 'function') ? calculateNeeds() : {};
-    let scienceHrs = 0;
-    let epsHrs = 0;
-    let artsHrs = 0;
-    
-    if (!DATA || !DATA.subjects) return;
-    
-    DATA.subjects.forEach(s => {
-        const structNeed = needs[s] || 0;
-        const name = s.toLowerCase();
-        
-        if (name.includes('phys') || name.includes('svt') || name.includes('techno') || name.includes('chimie') || name.includes('sciences')) {
-            scienceHrs += structNeed;
-        } else if (name.includes('eps') || name.includes('unss') || name.includes('sport')) {
-            epsHrs += structNeed;
-        } else if (name.includes('art') || name.includes('musique') || name.includes('musicale')) {
-            artsHrs += structNeed;
-        }
-    });
-    
-    // Add EDS groups
-    if (DATA.type !== 'college' && DATA.eds) {
-        ['premiere', 'terminale'].forEach(lvl => {
-            if (DATA.eds[lvl]) {
-                DATA.eds[lvl].forEach(e => {
-                    const name = e.name.toLowerCase();
-                    const vol = parseFloat(e.hPerGroup) || (lvl === 'premiere' ? 4 : 6);
-                    const totalHrs = (parseFloat(e.groups) || 0) * vol;
-                    if (name.includes('phys') || name.includes('svt') || name.includes('si') || name.includes('chimie') || name.includes('sciences')) {
-                        scienceHrs += totalHrs;
-                    } else if (name.includes('art') || name.includes('musique') || name.includes('théâtre') || name.includes('cinema')) {
-                        artsHrs += totalHrs;
-                    }
-                });
-            }
-        });
-    }
-    
-    const scienceRooms = Math.ceil(scienceHrs / 30);
-    const epsRooms = Math.ceil(epsHrs / 30);
-    const artsRooms = Math.ceil(artsHrs / 30);
-    
-    tbody.innerHTML = `
-        <tr>
-            <td style="text-align:left;">🧪 <strong>Laboratoires de Sciences</strong> (Physique, SVT, Techno)</td>
-            <td>${scienceHrs.toFixed(1)} h / sem.</td>
-            <td>${scienceRooms} salle(s)</td>
-            <td>${scienceHrs > 30 * scienceRooms ? '<span style="color:var(--danger); font-weight:bold;">⚠️ Risque de saturation</span>' : '<span style="color:var(--success);">✅ Capacité suffisante</span>'}</td>
-        </tr>
-        <tr>
-            <td style="text-align:left;">👟 <strong>Installations Sportives / Gymnase</strong> (EPS, UNSS)</td>
-            <td>${epsHrs.toFixed(1)} h / sem.</td>
-            <td>${epsRooms} plateau(x)</td>
-            <td>${epsHrs > 30 * epsRooms ? '<span style="color:var(--danger); font-weight:bold;">⚠️ Risque de saturation</span>' : '<span style="color:var(--success);">✅ Capacité suffisante</span>'}</td>
-        </tr>
-        <tr>
-            <td style="text-align:left;">🎨 <strong>Salles d'Arts</strong> (Arts Plastiques, Musique)</td>
-            <td>${artsHrs.toFixed(1)} h / sem.</td>
-            <td>${artsRooms} salle(s)</td>
-            <td>${artsHrs > 30 * artsRooms ? '<span style="color:var(--danger); font-weight:bold;">⚠️ Risque de saturation</span>' : '<span style="color:var(--success);">✅ Capacité suffisante</span>'}</td>
-        </tr>
-    `;
-}
-
-// --- SIMULATEUR DE STRESS TEST BUDGÉTAIRE ---
-function toggleStressTestMode(mode) {
-    const hoursGrp = document.getElementById('stress-test-hours-group');
-    const classGrp = document.getElementById('stress-test-class-group');
-    if (mode === 'class') {
-        if (hoursGrp) hoursGrp.style.display = 'none';
-        if (classGrp) classGrp.style.display = 'flex';
-        populateStressTestLevels();
-    } else {
-        if (hoursGrp) hoursGrp.style.display = 'flex';
-        if (classGrp) classGrp.style.display = 'none';
-    }
-    runStressTest();
-}
-
-function populateStressTestLevels() {
-    const select = document.getElementById('stress-test-level');
-    if (!select || !DATA || !DATA.structure) return;
-    select.innerHTML = '';
-    DATA.structure.forEach((lvl, idx) => {
-        const opt = new Option(lvl.level, idx);
-        select.add(opt);
-    });
-}
-
-function runStressTest(val) {
-    const resultElem = document.getElementById('stress-test-result');
-    const recElem = document.getElementById('stress-test-recommendations');
-    const modeElem = document.getElementById('stress-test-mode');
-    
-    if (!resultElem || !recElem || !DATA) return;
-    
-    const mode = modeElem ? modeElem.value : 'hours';
-    const currentMarge = parseFloat(document.getElementById('dash-solde')?.innerText) || 0;
-    
-    if (mode === 'hours') {
-        const inputVal = document.getElementById('stress-test-input')?.value;
-        const variation = parseFloat(inputVal !== undefined ? inputVal : val) || 0;
-        const newMarge = currentMarge + variation;
-        
-        resultElem.innerText = (newMarge >= 0 ? "+" : "") + newMarge.toFixed(1) + " h";
-        
-        if (newMarge >= 0) {
-            resultElem.style.color = "var(--success)";
-            recElem.style.borderColor = "var(--success)";
-            recElem.style.backgroundColor = "rgba(39, 174, 96, 0.1)";
-            recElem.innerHTML = `<strong>Diagnostic : Résilience excellente.</strong><br>
-            Le budget reste excédentaire. Vous disposez d'une marge confortable pour :<br>
-            - Créer des groupes d'accompagnement supplémentaires.<br>
-            - Allouer de l'autonomie ou des dédoublements de classes.<br>
-            - Améliorer la couverture horaire de matières spécifiques.`;
-        } else {
-            resultElem.style.color = "var(--danger)";
-            recElem.style.borderColor = "var(--danger)";
-            recElem.style.backgroundColor = "rgba(192, 57, 43, 0.1)";
-            recElem.innerHTML = `<strong>Diagnostic : Déficit budgétaire de ${Math.abs(newMarge).toFixed(1)} h.</strong><br>
-            Pour équilibrer votre DHG, vous devriez envisager les leviers suivants :<br>
-            - Optimiser les groupes d'EDS (fusionner les groupes de spécialités avec de petits effectifs).<br>
-            - Réduire les heures de marge / autonomie des classes.<br>
-            - Ajuster à la baisse les options facultatives (Langues Anciennes, Sections Euro, etc.).`;
-        }
-    } else {
-        // Mode Classe
-        const lvlIdx = parseInt(document.getElementById('stress-test-level')?.value) || 0;
-        const action = document.getElementById('stress-test-action')?.value || 'remove';
-        
-        const lvl = DATA.structure[lvlIdx];
-        if (!lvl) return;
-        
-        const targetHrs = parseFloat(lvl.target) || 29;
-        const variation = action === 'remove' ? -targetHrs : targetHrs;
-        const newMargeIfOpen = currentMarge + (action === 'remove' ? -targetHrs : 0); // If dotation is cut but class stays open
-        
-        const currentAvg = lvl.div > 0 ? (lvl.students / lvl.div) : 0;
-        const newDivisions = action === 'remove' ? Math.max(lvl.div - 1, 1) : lvl.div + 1;
-        const newAvg = lvl.students / newDivisions;
-        const threshold = getThresholdLimit(lvl.level, DATA.type);
-        
-        let recHTML = ``;
-        if (action === 'remove') {
-            resultElem.innerText = (currentMarge + variation).toFixed(1) + " h";
-            resultElem.style.color = "var(--danger)";
-            recElem.style.borderColor = "var(--accent)";
-            recElem.style.backgroundColor = "rgba(230, 126, 34, 0.1)";
-            
-            recHTML = `<strong>Fermeture d'une division sur le niveau ${lvl.level} :</strong><br>
-            - 📉 <strong>Impact Dotation</strong> : Réduction de la DHG de <strong>-${targetHrs.toFixed(1)} h</strong>.<br>
-            - 👥 <strong>Moyenne par classe</strong> : Passera de <strong>${currentAvg.toFixed(1)}</strong> à <strong>${newAvg.toFixed(1)}</strong> élèves/classe.<br>`;
-            
-            if (newAvg > threshold) {
-                recHTML += `<span style="color:var(--danger); font-weight:bold;">⚠️ Alerte Seuil : L'effectif moyen (${newAvg.toFixed(1)}) dépassera le seuil de ${threshold} élèves/classe ! La fermeture est risquée.</span><br>`;
-            } else {
-                recHTML += `<span style="color:var(--success); font-weight:bold;">✅ L'effectif moyen (${newAvg.toFixed(1)}) reste sous le seuil de ${threshold} élèves/classe. La fermeture est structurellement possible.</span><br>`;
-            }
-            
-            recHTML += `- ⚙️ <strong>Impact Budgétaire</strong> : Si la classe est fermée face élèves, le gain de consommation équilibre la perte de dotation (marge constante). Si la classe doit rester ouverte, votre solde de DHG sera déficitaire de <strong>${newMargeIfOpen.toFixed(1)} h</strong>.`;
-        } else {
-            resultElem.innerText = (currentMarge + variation).toFixed(1) + " h";
-            resultElem.style.color = "var(--success)";
-            recElem.style.borderColor = "var(--success)";
-            recElem.style.backgroundColor = "rgba(39, 174, 96, 0.1)";
-            
-            recHTML = `<strong>Ouverture d'une division sur le niveau ${lvl.level} :</strong><br>
-            - 📈 <strong>Impact Dotation</strong> : Hausse de la DHG de <strong>+${targetHrs.toFixed(1)} h</strong>.<br>
-            - 👥 <strong>Moyenne par classe</strong> : Passera de <strong>${currentAvg.toFixed(1)}</strong> à <strong>${newAvg.toFixed(1)}</strong> élèves/classe.<br>
-            - ⚙️ <strong>Ajustement</strong> : Permet de désaturer les classes de ce niveau si l'effectif actuel est trop lourd.`;
-        }
-        
-        recElem.innerHTML = recHTML;
-    }
-}
-
-
-// --- COMPARAISON DE SCENARIOS ---
-function getScenarios() {
-    try {
-        return JSON.parse(localStorage.getItem('DHG_Scenarios') || '[]');
-    } catch (e) {
-        return [];
-    }
-}
-
-function saveCurrentScenario() {
-    const name = prompt("Nom du scénario ? (ex: Version 1 - 12 classes)");
-    if (!name) return;
-    
-    const scenarios = getScenarios();
-    const currentConso = parseFloat(document.getElementById('dash-conso')?.innerText) || 0;
-    const currentMarge = parseFloat(document.getElementById('dash-solde')?.innerText) || 0;
-    const currentTotalDiv = DATA.structure.reduce((acc, curr) => acc + (curr.div || 0), 0);
-    const hsaPercent = document.getElementById('global-hsa-percent-display')?.innerText || "0%";
-    
-    const scenario = {
-        id: Date.now(),
-        name: name,
-        dhg: DATA.config.total,
-        divisions: currentTotalDiv,
-        conso: currentConso,
-        hsaPercent: hsaPercent,
-        marge: currentMarge,
-        date: new Date().toLocaleString('fr-FR'),
-        data: JSON.parse(JSON.stringify(DATA))
-    };
-    
-    scenarios.push(scenario);
-    localStorage.setItem('DHG_Scenarios', JSON.stringify(scenarios));
-    renderScenariosTable();
-}
-
-function deleteScenario(id) {
-    if (!confirm("Supprimer ce scénario ?")) return;
-    let scenarios = getScenarios();
-    scenarios = scenarios.filter(s => s.id !== id);
-    localStorage.setItem('DHG_Scenarios', JSON.stringify(scenarios));
-    renderScenariosTable();
-}
-
-function loadScenario(id) {
-    if (!confirm("Attention : Charger ce scénario remplacera vos données actuelles. Continuer ?")) return;
-    const scenarios = getScenarios();
-    const found = scenarios.find(s => s.id === id);
-    if (found) {
-        DATA = JSON.parse(JSON.stringify(found.data));
-        saveData();
-        updateAllAfterStateChange();
-        alert("✅ Scénario chargé !");
-    }
-}
-
-function clearScenarios() {
-    if (!confirm("Voulez-vous réinitialiser tous les scénarios comparatifs ?")) return;
-    localStorage.removeItem('DHG_Scenarios');
-    renderScenariosTable();
-}
-
-function renderScenariosTable() {
-    const tbody = document.getElementById('scenarios-comparison-body');
-    if (!tbody) return;
-    
-    const scenarios = getScenarios();
-    if (scenarios.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" style="color:var(--text-muted); font-style:italic;">Aucun scénario enregistré pour le moment.</td></tr>`;
-        return;
-    }
-    
-    tbody.innerHTML = scenarios.map(s => {
-        let margeColor = s.marge >= 0 ? 'var(--success)' : 'var(--danger)';
-        return `<tr>
-            <td><strong>${s.name}</strong></td>
             <td>${s.dhg.toFixed(1)} h</td>
-            <td>${s.divisions} classes</td>
+            <td>${s.divisions} cls</td>
             <td>${s.conso.toFixed(1)} h</td>
             <td>${s.hsaPercent}</td>
-            <td style="color:${margeColor}; font-weight:bold;">${s.marge.toFixed(1)} h</td>
-            <td style="font-size:0.8rem; color:var(--text-muted);">${s.date}</td>
+            <td style="color:${margeColor}; font-weight:bold;">
+                ${s.marge.toFixed(1)} h
+                ${deltaMargeText}
+            </td>
             <td>
-                <div style="display:flex; gap:5px; justify-content:center;">
+                <div style="display:flex; gap:4px; justify-content:center; flex-wrap:wrap;">
                     <button class="btn btn-sm btn-success" onclick="loadScenario(${s.id})" title="Charger">🔄 Charger</button>
+                    <button class="btn btn-sm btn-purple" onclick="duplicateScenario(${s.id})" title="Dupliquer">💾 Cloner</button>
                     <button class="btn btn-sm btn-danger" onclick="deleteScenario(${s.id})" title="Supprimer">🗑️</button>
                 </div>
             </td>
@@ -6306,7 +5926,80 @@ function renderScenariosTable() {
     }).join('');
 }
 
+// --- VISUALISATION CÔTE À CÔTE DES SCÉNARIOS ---
+function openComparisonModal() {
+    const scenarios = getScenarios();
+    if (scenarios.length < 2) {
+        return alert("Veuillez enregistrer au moins 2 scénarios pour pouvoir les comparer.");
+    }
+    
+    const selectA = document.getElementById('compare-select-a');
+    const selectB = document.getElementById('compare-select-b');
+    
+    if (!selectA || !selectB) return;
+    
+    selectA.innerHTML = '';
+    selectB.innerHTML = '';
+    
+    scenarios.forEach((s, idx) => {
+        selectA.add(new Option(s.name, s.id));
+        selectB.add(new Option(s.name, s.id));
+    });
+    
+    // Select different ones by default
+    selectB.selectedIndex = 1;
+    
+    document.getElementById('comparison-modal-overlay').style.display = 'flex';
+    renderComparisonResult();
+}
 
+function closeComparisonModal() {
+    document.getElementById('comparison-modal-overlay').style.display = 'none';
+}
+
+function renderComparisonResult() {
+    const selectA = document.getElementById('compare-select-a');
+    const selectB = document.getElementById('compare-select-b');
+    const body = document.getElementById('comparison-result-body');
+    
+    if (!selectA || !selectB || !body) return;
+    
+    const scenarios = getScenarios();
+    const sA = scenarios.find(s => s.id == selectA.value);
+    const sB = scenarios.find(s => s.id == selectB.value);
+    
+    if (!sA || !sB) return;
+    
+    document.getElementById('compare-name-a').innerText = sA.name;
+    document.getElementById('compare-name-b').innerText = sB.name;
+    
+    // Calculate metrics
+    const metrics = [
+        { label: "Dotation globale (DHG)", valA: sA.dhg, valB: sB.dhg, unit: " h", dec: 1 },
+        { label: "Divisions (Classes)", valA: sA.divisions, valB: sB.divisions, unit: " classes", dec: 0 },
+        { label: "Consommation horaire", valA: sA.conso, valB: sB.conso, unit: " h", dec: 1 },
+        { label: "Solde / Marge de sécurité", valA: sA.marge, valB: sB.marge, unit: " h", dec: 1 }
+    ];
+    
+    body.innerHTML = metrics.map(m => {
+        const diff = m.valB - m.valA;
+        let diffHTML = "";
+        if (diff > 0) {
+            diffHTML = `<span style="color:var(--success); font-weight:bold;">+${diff.toFixed(m.dec)}${m.unit}</span>`;
+        } else if (diff < 0) {
+            diffHTML = `<span style="color:var(--danger); font-weight:bold;">${diff.toFixed(m.dec)}${m.unit}</span>`;
+        } else {
+            diffHTML = `<span style="color:var(--text-muted); font-weight:bold;">0</span>`;
+        }
+        
+        return `<tr>
+            <td style="text-align:left;"><strong>${m.label}</strong></td>
+            <td>${m.valA.toFixed(m.dec)}${m.unit}</td>
+            <td>${m.valB.toFixed(m.dec)}${m.unit}</td>
+            <td>${diffHTML}</td>
+        </tr>`;
+    }).join('');
+}
 // --- GÉNÉRATEUR DE STRUCTURE INITIALE AUTO ---
 function autoInitializeStructure() {
     if (!confirm("Voulez-vous écraser la structure actuelle et la générer automatiquement à partir de vos effectifs d'élèves ?")) return;
