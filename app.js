@@ -4363,7 +4363,6 @@ function generateCAPres() {
     sVote.addText("ABSTENTIONS", { x: 6.8, y: boxY + 0.1, w: 2.3, fontSize: 12, bold: true, color: colors.primary, align:'center' });
 
     pptx.writeFile({ fileName: `DHG_CA_${DATA.config.year}.pptx` });
-}.pptx` });
 }
 let currentEdsLevel = ''; // Pour savoir si on est en 1ere ou Term
 let tempSelectedEds = new Set();
