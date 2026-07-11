@@ -244,6 +244,11 @@ window.onload = function() {
         // Vérification des structures de données existantes
         if(!DATA.subjectMeta) DATA.subjectMeta = {};
 
+        // Restauration des scénarios embarqués dans la sauvegarde
+        if (Array.isArray(DATA._scenarios) && !localStorage.getItem('DHG_Scenarios')) {
+            localStorage.setItem('DHG_Scenarios', JSON.stringify(DATA._scenarios));
+        }
+
         // --- AJOUT SPÉCIFIQUE POUR LE MENU ÉQUIPES ---
         // Initialise le stockage des affectations profs/classes si inexistant
         if(!DATA.assignments) DATA.assignments = {}; 
@@ -266,6 +271,8 @@ window.onload = function() {
         initUI();
         initTheme();
         pushState();
+        calculateRecap(); // Alimente les KPI du tableau de bord (conso, HP, HSA, marge)
+        if (typeof drawDashboardChart === 'function') drawDashboardChart();
         renderScenariosTable();
         calculateBudget();
         renderDiagnosticTable();
@@ -1342,38 +1349,46 @@ function calculateDynamicApports() {
             }
         });
         
+        // CSD interne : la discipline d'origine est saturée, donc les HSA du professeur
+        // sont effectuées dans la discipline receveuse (ex: Vinagre, LC → LM).
+        const hasInternalCsd = csd > 0 && t.csd_sub && t.csd_sub !== t.subject && apports[t.csd_sub];
+        const homeCapacity = hasInternalCsd ? expectedORS : capacity;
+
         if (t.subject && DATA.subjects.includes(t.subject)) {
-            allocated[t.subject] = (allocated[t.subject] || 0) + Math.max(0, capacity - totalAssigned);
+            allocated[t.subject] = (allocated[t.subject] || 0) + Math.max(0, homeCapacity - totalAssigned);
         }
-        
+
         let cumulativeHP = 0;
+        let distributedHSA = 0;
         const subjectOrder = DATA.subjects.filter(s => s !== t.subject);
         if (t.subject && DATA.subjects.includes(t.subject)) {
             subjectOrder.push(t.subject);
         }
-        
+
         subjectOrder.forEach(s => {
             const alloc = allocated[s] || 0;
             if (alloc > 0) {
                 const hpPart = Math.min(alloc, Math.max(0, expectedORS - cumulativeHP));
                 const hsaPart = alloc - hpPart;
-                
+
                 apports[s].hp += hpPart;
                 apports[s].hsa += hsaPart;
                 apports[s].total += alloc;
-                
+
                 cumulativeHP += hpPart;
+                distributedHSA += hsaPart;
             }
         });
 
-        // CSD interne : les heures données par ce professeur sont créditées
-        // en HP à la discipline receveuse (ex: Lettres Classiques → Lettres Modernes).
-        // Si des classes de cette discipline lui sont déjà affectées via la grille Équipes,
-        // seul le surplus non couvert est crédité (pas de double comptage).
-        if (csd > 0 && t.csd_sub && t.csd_sub !== t.subject && apports[t.csd_sub]) {
-            const extra = Math.max(0, csd - (allocated[t.csd_sub] || 0));
-            apports[t.csd_sub].hp += extra;
-            apports[t.csd_sub].total += extra;
+        // CSD interne : les heures données (et les HSA restantes) sont créditées
+        // à la discipline receveuse. Si des classes lui sont déjà affectées via la
+        // grille Équipes, seul le surplus non couvert est crédité (pas de double comptage).
+        if (hasInternalCsd) {
+            const extraHp = Math.max(0, csd - (allocated[t.csd_sub] || 0));
+            const extraHsa = Math.max(0, thsa - distributedHSA);
+            apports[t.csd_sub].hp += extraHp;
+            apports[t.csd_sub].hsa += extraHsa;
+            apports[t.csd_sub].total += extraHp + extraHsa;
         }
     });
 
@@ -1418,38 +1433,45 @@ function getTeacherAllocationInSubject(t, tIdx, sub) {
         }
     });
     
+    // CSD interne : la discipline d'origine est saturée, les HSA suivent la discipline receveuse
+    const hasInternalCsd = csd > 0 && t.csd_sub && t.csd_sub !== t.subject;
+    const homeCapacity = hasInternalCsd ? expectedORS : capacity;
+
     if (t.subject && DATA.subjects.includes(t.subject)) {
-        allocated[t.subject] = (allocated[t.subject] || 0) + Math.max(0, capacity - totalAssigned);
+        allocated[t.subject] = (allocated[t.subject] || 0) + Math.max(0, homeCapacity - totalAssigned);
     }
-    
+
     let cumulativeHP = 0;
+    let distributedHSA = 0;
     const subjectOrder = DATA.subjects.filter(s => s !== t.subject);
     if (t.subject && DATA.subjects.includes(t.subject)) {
         subjectOrder.push(t.subject);
     }
-    
+
     let hpPart = 0;
     let hsaPart = 0;
-    
+
     subjectOrder.forEach(s => {
         const alloc = allocated[s] || 0;
         if (alloc > 0) {
             const currentHp = Math.min(alloc, Math.max(0, expectedORS - cumulativeHP));
             const currentHsa = alloc - currentHp;
-            
+
             if (s === sub) {
                 hpPart = currentHp;
                 hsaPart = currentHsa;
             }
-            
+
             cumulativeHP += currentHp;
+            distributedHSA += currentHsa;
         }
     });
-    
-    // CSD interne : les heures données comptent comme HP dans la discipline receveuse
+
+    // CSD interne : les heures données (+ HSA restantes) comptent dans la discipline receveuse
     // (seul le surplus non déjà couvert par des affectations de la grille est ajouté)
-    if (csd > 0 && t.csd_sub === sub && t.subject !== sub) {
+    if (hasInternalCsd && sub === t.csd_sub) {
         hpPart += Math.max(0, csd - (allocated[sub] || 0));
+        hsaPart += Math.max(0, thsa - distributedHSA);
     }
 
     return { hp: hpPart, hsa: hsaPart, total: hpPart + hsaPart };
@@ -1673,6 +1695,11 @@ function loadSaveFile(input) {
             // --- CHARGEMENT EN MÉMOIRE ---
             DATA = loadedData;
 
+            // Restauration des scénarios embarqués dans le fichier
+            if (Array.isArray(DATA._scenarios)) {
+                localStorage.setItem('DHG_Scenarios', JSON.stringify(DATA._scenarios));
+            }
+
             // --- DÉTECTION INTELLIGENTE (LGT vs COLLÈGE) ---
             let isLGT = false;
             // On sécurise la lecture de la structure pour éviter le bug "Fichier corrompu"
@@ -1888,6 +1915,7 @@ function migrateV18toV19(data) {
 
 // --- FONCTION DE SAUVEGARDE SUR DISQUE (Correction) ---
 function downloadSaveFile() {
+    DATA._scenarios = getScenarios(); // Les scénarios voyagent avec le fichier
     const dateStr = new Date().toISOString().slice(0, 10);
     const filename = `DHG_Manager_Export_${dateStr}.data`;
     
@@ -2400,23 +2428,26 @@ function calculateRecap() {
         const hsa = parseFloat(p.hsa || 0);
         const bmp = parseFloat(p.bmp || 0);
 
+        // CSD interne : discipline d'origine saturée, les HSA suivent la discipline receveuse
+        const hasInternalCsd = csd > 0 && p.csd_sub && p.csd_sub !== p.subject;
+
         // Coût financier réel : (ORS - CSD - DechExterne) + HSA
-        const financialCost = (ors - csd - dechExt) + hsa;
-        
-        res[p.subject].cost += financialCost;
-        res[p.subject].hsa += hsa;
+        const homeHsa = hasInternalCsd ? 0 : hsa;
+        res[p.subject].cost += (ors - csd - dechExt) + homeHsa;
+        res[p.subject].hsa += homeHsa;
         res[p.subject].dechInt += dechInt;
 
         // Génération des tags automatiques (BMP, CSD)
         if (bmp > 0) autoComments[p.subject].push(`BMP ${bmp}h`);
         if (csd > 0) autoComments[p.subject].push(`CSD ${p.name} ${csd}h` + (p.csd_sub ? ` → ${p.csd_sub}` : ' (ext.)'));
 
-        // CSD interne : les heures données sont créditées à la discipline receveuse
-        if (csd > 0 && p.csd_sub && p.csd_sub !== p.subject) {
+        // CSD interne : les heures données (+ HSA du professeur) sont créditées à la discipline receveuse
+        if (hasInternalCsd) {
             if (!res[p.csd_sub]) res[p.csd_sub] = { teaching:0, cost:0, hsa:0, dechInt:0 };
             if (!autoComments[p.csd_sub]) autoComments[p.csd_sub] = [];
-            res[p.csd_sub].cost += csd;
-            autoComments[p.csd_sub].push(`CSD reçu ${p.name} (${p.subject}) ${csd}h`);
+            res[p.csd_sub].cost += csd + hsa;
+            res[p.csd_sub].hsa += hsa;
+            autoComments[p.csd_sub].push(`CSD reçu ${p.name} (${p.subject}) ${csd}h` + (hsa > 0 ? ` + ${hsa}h HSA` : ''));
         }
     });
 
@@ -3407,7 +3438,9 @@ function generateProPDF(section, title, filename, customOrientation, customForma
             const dechInt = profs.reduce((a,t)=>a+(t.decharge||0), 0);
             const dechExt = profs.reduce((a,t)=>a+(t.dech_ext||0), 0);
             const hp = profs.reduce((a,t)=> a + (t.ors - (t.csd||0) - (t.dech_ext||0)), 0) + getCsdReceived(sub);
-            const hsa = profs.reduce((a,t)=>a+t.hsa, 0);
+            // HSA : celles des profs de la discipline (hors CSD interne sortant) + celles reçues via CSD interne
+            const hsa = profs.reduce((a,t)=> a + ((t.csd_sub && t.csd_sub !== sub) ? 0 : (t.hsa||0)), 0)
+                + (DATA.teachers || []).reduce((a,t)=> a + ((t.csd_sub === sub && t.subject !== sub && (t.csd||0) > 0) ? (t.hsa||0) : 0), 0);
             const bes = (needs[sub] || 0) + dechInt;
             const app = hp + hsa;
             return { bes, app, hp, hsa, profs };
@@ -4466,12 +4499,13 @@ function generateCAPres() {
     DATA.teachers.forEach(p => {
         if (!p.subject) return;
         if (!res[p.subject]) res[p.subject] = { cost: 0, dechInt: 0 };
-        res[p.subject].cost += (p.ors - (p.csd||0) - (p.dech_ext||0)) + p.hsa;
+        const isInternalCsd = (p.csd||0) > 0 && p.csd_sub && p.csd_sub !== p.subject;
+        res[p.subject].cost += (p.ors - (p.csd||0) - (p.dech_ext||0)) + (isInternalCsd ? 0 : (p.hsa||0));
         res[p.subject].dechInt += parseFloat(p.decharge || 0);
-        // CSD interne : heures créditées à la discipline receveuse
-        if ((p.csd||0) > 0 && p.csd_sub && p.csd_sub !== p.subject) {
+        // CSD interne : heures données + HSA du professeur créditées à la discipline receveuse
+        if (isInternalCsd) {
             if (!res[p.csd_sub]) res[p.csd_sub] = { cost: 0, dechInt: 0 };
-            res[p.csd_sub].cost += parseFloat(p.csd);
+            res[p.csd_sub].cost += parseFloat(p.csd) + (p.hsa||0);
         }
     });
 
@@ -6014,6 +6048,12 @@ function getThresholdLimit(levelName, type) {
 }
 
 // --- COMPARAISON DE SCENARIOS ---
+// Les scénarios sont synchronisés dans DATA._scenarios pour voyager avec le fichier .data
+function syncScenarios(scenarios) {
+    localStorage.setItem('DHG_Scenarios', JSON.stringify(scenarios));
+    if (DATA) { DATA._scenarios = scenarios; saveData(); }
+}
+
 function getScenarios() {
     try {
         return JSON.parse(localStorage.getItem('DHG_Scenarios') || '[]');
@@ -6130,11 +6170,12 @@ function saveCurrentScenario() {
         date: new Date().toLocaleDateString('fr-FR'),
         data: JSON.parse(JSON.stringify(DATA))
     };
-    
+    delete scenario.data._scenarios;
+
     scenario.score = calculateQualityScore(scenario);
     
     scenarios.push(scenario);
-    localStorage.setItem('DHG_Scenarios', JSON.stringify(scenarios));
+    syncScenarios(scenarios);
     renderScenariosTable();
 }
 
@@ -6149,7 +6190,7 @@ function duplicateScenario(id) {
     clone.date = new Date().toLocaleDateString('fr-FR');
     
     scenarios.push(clone);
-    localStorage.setItem('DHG_Scenarios', JSON.stringify(scenarios));
+    syncScenarios(scenarios);
     renderScenariosTable();
 }
 
@@ -6167,7 +6208,7 @@ function deleteScenario(id) {
     if (!confirm("Supprimer ce scénario ?")) return;
     let scenarios = getScenarios();
     scenarios = scenarios.filter(s => s.id !== id);
-    localStorage.setItem('DHG_Scenarios', JSON.stringify(scenarios));
+    syncScenarios(scenarios);
     
     const baselineId = getBaselineScenarioId();
     if (baselineId == id) {
@@ -6183,6 +6224,7 @@ function loadScenario(id) {
     const found = scenarios.find(s => s.id === id);
     if (found) {
         DATA = JSON.parse(JSON.stringify(found.data));
+        DATA._scenarios = scenarios;
         saveData();
         updateAllAfterStateChange();
         alert("✅ Scénario chargé !");
@@ -6192,6 +6234,7 @@ function loadScenario(id) {
 function clearScenarios() {
     if (!confirm("Voulez-vous réinitialiser tous les scénarios comparatifs ?")) return;
     localStorage.removeItem('DHG_Scenarios');
+    if (DATA) { delete DATA._scenarios; saveData(); }
     localStorage.removeItem('DHG_Baseline_Scenario_ID');
     renderScenariosTable();
 }
@@ -6714,4 +6757,108 @@ function calculateRoomsOccupancy() {
     });
 
     tBody.innerHTML = html || `<tr><td colspan="4" style="color:var(--text-muted); font-style:italic;">Aucune matière à salle spécialisée détectée dans la grille.</td></tr>`;
+}
+
+// ------------------------------------------------------------------------------------------------
+// PONDÉRATION D'UN ENSEIGNANT
+// Heures majorées issues des coefficients de la grille (ex: cycle terminal ×1,1) :
+// pour chaque affectation, quota × (coef − 1) dans la discipline du professeur.
+// ------------------------------------------------------------------------------------------------
+function getTeacherWeighting(tIdx) {
+    const t = DATA.teachers[tIdx];
+    if (!t || !DATA.assignments) return 0;
+    let pond = 0;
+    Object.keys(DATA.assignments).forEach(key => {
+        if (!key.endsWith('_' + tIdx)) return;
+        const quota = parseFloat(DATA.assignments[key].quota) || 0;
+        if (quota <= 0) return;
+        const classId = key.slice(0, key.length - String(tIdx).length - 1);
+        const lvl = DATA.structure.find(l => classId.startsWith(getLevelPrefix(l.level)));
+        if (!lvl) return;
+        const cfg = DATA.levelConfig[lvl.level] ? DATA.levelConfig[lvl.level][t.subject] : null;
+        const coef = cfg ? (parseFloat(cfg.coef) || 1.0) : 1.0;
+        pond += quota * (coef - 1);
+    });
+    return pond;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ESTIMATION BUDGÉTAIRE (Tableau de bord)
+// ------------------------------------------------------------------------------------------------
+function calculateBudget() {
+    const elHsa = document.getElementById('budget-hsa-cost');
+    const elPacte = document.getElementById('budget-pacte-cost');
+    const elTotal = document.getElementById('budget-total-cost');
+    if (!elHsa || !DATA) return;
+
+    let costHSA = 0, costPacte = 0;
+    (DATA.teachers || []).forEach(p => {
+        const hsa = parseFloat(p.hsa) || 0;
+        const pacte = parseInt(p.pacte) || 0;
+        const status = (p.status || "").toLowerCase();
+        if (hsa > 0) costHSA += hsa * (status.includes('agrégé') || status.includes('agrege') ? 1800 : 1400);
+        costPacte += pacte * 1250;
+    });
+
+    elHsa.innerText = costHSA.toLocaleString('fr-FR');
+    if (elPacte) elPacte.innerText = costPacte.toLocaleString('fr-FR');
+    if (elTotal) elTotal.innerText = (costHSA + costPacte).toLocaleString('fr-FR');
+}
+
+// ------------------------------------------------------------------------------------------------
+// SIMULATEUR DE STRESS TEST BUDGÉTAIRE (Tableau de bord)
+// ------------------------------------------------------------------------------------------------
+function toggleStressTestMode(mode) {
+    const gHours = document.getElementById('stress-test-hours-group');
+    const gClass = document.getElementById('stress-test-class-group');
+    if (gHours) gHours.style.display = mode === 'class' ? 'none' : 'flex';
+    if (gClass) gClass.style.display = mode === 'class' ? 'flex' : 'none';
+    runStressTest();
+}
+
+function runStressTest() {
+    const elResult = document.getElementById('stress-test-result');
+    const elReco = document.getElementById('stress-test-recommendations');
+    if (!elResult || !DATA) return;
+
+    // Peupler le sélecteur de niveau si nécessaire
+    const lvlSelect = document.getElementById('stress-test-level');
+    if (lvlSelect && lvlSelect.options.length !== DATA.structure.length) {
+        const prev = lvlSelect.value;
+        lvlSelect.innerHTML = DATA.structure.map(l => `<option value="${l.level}">${l.level}</option>`).join('');
+        if (prev) lvlSelect.value = prev;
+    }
+
+    // Solde actuel : dotation (structure + moyens supp.) − consommation
+    const suppTotal = DATA.additionalMeans ? (parseFloat(DATA.additionalMeans.total) || 0) : 0;
+    const dotation = DATA.structure.reduce((a, l) => a + (l.div || 0) * (l.target || 0), 0) + suppTotal;
+    const conso = parseFloat(document.getElementById('dash-conso')?.innerText) || 0;
+    const baseSolde = dotation - conso;
+
+    const mode = document.getElementById('stress-test-mode')?.value || 'hours';
+    let delta = 0;
+    if (mode === 'class') {
+        const lvlName = lvlSelect ? lvlSelect.value : null;
+        const lvl = DATA.structure.find(l => l.level === lvlName) || DATA.structure[0];
+        const action = document.getElementById('stress-test-action')?.value || 'remove';
+        delta = (action === 'add' ? 1 : -1) * (lvl ? (parseFloat(lvl.target) || 0) : 0);
+    } else {
+        delta = parseFloat(document.getElementById('stress-test-input')?.value) || 0;
+    }
+
+    const newSolde = baseSolde + delta;
+    elResult.innerText = newSolde.toFixed(1) + " h";
+    elResult.style.color = newSolde >= 0 ? 'var(--success)' : 'var(--danger)';
+
+    if (elReco) {
+        let reco;
+        if (newSolde >= 0) {
+            reco = `✅ <strong>Marge positive de ${newSolde.toFixed(1)} h</strong> : la dotation couvre les besoins. Marge de manœuvre pour renforcer les groupes, réduire le taux de HSA ou abonder les dispositifs (AP, Devoirs Faits).`;
+        } else if (newSolde > -10) {
+            reco = `⚠️ <strong>Déficit modéré (${newSolde.toFixed(1)} h)</strong> : envisager un ajustement des heures de marge/autonomie, une légère hausse des HSA ou la mutualisation de groupes à faible effectif.`;
+        } else {
+            reco = `🔴 <strong>Déficit important (${newSolde.toFixed(1)} h)</strong> : une révision de la structure est nécessaire (fusion de divisions, réduction des dédoublements, arbitrage sur les options). À présenter en CA avec scénarios comparés.`;
+        }
+        elReco.innerHTML = reco;
+    }
 }
