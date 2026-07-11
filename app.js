@@ -6895,6 +6895,8 @@ function analyseDhgPourSuggestions(d) {
         });
         diag.margeParNiveau[lvl.level] = margeNiveau;
         if (margeNiveau < 0.01) diag.niveauxSansMarge.push(lvl.level);
+        diag.edParNiveau = diag.edParNiveau || {};
+        diag.edParNiveau[lvl.level] = lvl.div > 0 ? (lvl.students || 0) / lvl.div : 0;
     });
 
     // Tensions disciplinaires : besoin (structure + décharges int.) vs apport (profs, CSD compris)
@@ -7114,6 +7116,66 @@ const SCENARIO_GENERATORS = [
         }
     }
 ];
+
+SCENARIO_GENERATORS.push({
+    id: 'lv1-anglais',
+    applicable: diag => {
+        // Niveaux où la LV1 anglais est active mais sans aucun groupe (marge < 1h),
+        // avec un effectif par division chargé (≥ 26) et un donneur de marge disponible.
+        return DATA.structure.some(lvl => {
+            const s = DATA.subjects.find(x => /anglais/i.test(x));
+            if (!s) return false;
+            const meta = DATA.subjectMeta[s];
+            const cfg = DATA.levelConfig[lvl.level] && DATA.levelConfig[lvl.level][s];
+            if (!cfg || !meta || meta.mode !== 'div' || !(meta.levels||[]).includes(lvl.level)) return false;
+            return (parseFloat(cfg.marge)||0) * lvl.div < 1
+                && (diag.edParNiveau[lvl.level]||0) >= 26
+                && (diag.margeParNiveau[lvl.level]||0) >= 3 + MARGE_MIN;
+        });
+    },
+    build: (diag) => {
+        const sujet = DATA.subjects.find(x => /anglais/i.test(x));
+        const cibles = DATA.structure.filter(lvl => {
+            const cfg = DATA.levelConfig[lvl.level] && DATA.levelConfig[lvl.level][sujet];
+            return cfg && (parseFloat(cfg.marge)||0) * lvl.div < 1
+                && (diag.edParNiveau[lvl.level]||0) >= 26
+                && (diag.margeParNiveau[lvl.level]||0) >= 3 + MARGE_MIN;
+        });
+        const journal = [];
+        const mutate = (d) => {
+            cibles.forEach(lvlRef => {
+                const lvl = d.structure.find(l => l.level === lvlRef.level);
+                // Financement : la plus grosse marge du niveau (hors anglais), en heures pleines
+                let budget = Math.min(3, Math.floor(diag.margeParNiveau[lvl.level] - MARGE_MIN));
+                const cfgs = Object.entries(d.levelConfig[lvl.level])
+                    .filter(([sub,c]) => sub !== sujet && (parseFloat(c.marge)||0) * lvl.div >= 1 &&
+                            d.subjectMeta[sub] && d.subjectMeta[sub].mode === 'div')
+                    .sort((a,b) => (b[1].marge||0) - (a[1].marge||0));
+                let pris = 0;
+                for (const [sub, cfg] of cfgs) {
+                    if (pris >= budget) break;
+                    const prendre = Math.min(budget - pris, Math.floor(cfg.marge * lvl.div));
+                    if (prendre >= 1) {
+                        cfg.marge = +(cfg.marge - prendre / lvl.div).toFixed(4);
+                        pris += prendre;
+                        journal.push(`−${prendre}h d'AP ${sub} en ${lvl.level}`);
+                    }
+                }
+                if (pris >= 1) _allouerHeuresPleines(d, lvl.level, pris, [sujet], journal);
+            });
+        };
+        const detail = cibles.map(l =>
+            `${l.level} (E/D ${(diag.edParNiveau[l.level]||0).toFixed(1)}, aucun groupe d'anglais)`).join(', ');
+        return {
+            name: "🤖 Groupes de besoins en LV1 anglais",
+            notes: `Diagnostic : ${detail} — des divisions chargées suivent l'anglais en classe entière, ` +
+                   `alors que l'hétérogénéité en langue vivante est forte dès l'entrée au collège. ` +
+                   `Proposition : création de groupes de besoins en heures pleines → ${'${JOURNAL}'}. ` +
+                   `Coût global nul, aucune barrette d'1h30.`,
+            mutate, journal
+        };
+    }
+});
 
 // --- Point d'entrée : bouton "Proposer (auto)" du comparateur ---
 function proposeScenariosAuto() {
