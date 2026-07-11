@@ -6862,3 +6862,315 @@ function runStressTest() {
         elReco.innerHTML = reco;
     }
 }
+
+// ================================================================================================
+// MOTEUR DE PROPOSITION AUTOMATIQUE DE SCÉNARIOS
+// Analyse la DHG courante, détecte les points d'amélioration, et génère des scénarios
+// justifiés chiffre à l'appui. Règles : réallocations concrètes uniquement (pas d'enveloppe
+// flottante), heures pleines (pas de nouvelle barrette d'1h30), marge maintenue entre 2 et 4h.
+// ================================================================================================
+
+const MARGE_MIN = 2, MARGE_MAX = 4, MARGE_CIBLE = 3;
+
+// --- Diagnostic chiffré de la répartition courante ---
+function analyseDhgPourSuggestions(d) {
+    d = d || DATA;
+    const diag = { fractionalSlots: [], margeParNiveau: {}, niveauxSansMarge: [],
+                   tensions: [], margeStructure: 0, dotation: 0, besoins: 0 };
+
+    // Marges par niveau + créneaux fractionnaires (barrettes d'1h30 du modèle "4 classes = 5 groupes")
+    d.structure.forEach(lvl => {
+        let margeNiveau = 0;
+        Object.keys(d.levelConfig[lvl.level] || {}).forEach(s => {
+            const meta = d.subjectMeta[s];
+            if (!meta || meta.mode !== 'div' || !(meta.levels||[]).includes(lvl.level)) return;
+            const cfg = d.levelConfig[lvl.level][s];
+            const m = parseFloat(cfg.marge) || 0;
+            if (m <= 0) return;
+            const hours = m * lvl.div;
+            margeNiveau += hours;
+            if (Math.abs(hours - Math.round(hours)) > 0.01) {
+                diag.fractionalSlots.push({ lvl: lvl.level, subject: s, marge: m, hours: hours, div: lvl.div });
+            }
+        });
+        diag.margeParNiveau[lvl.level] = margeNiveau;
+        if (margeNiveau < 0.01) diag.niveauxSansMarge.push(lvl.level);
+    });
+
+    // Tensions disciplinaires : besoin (structure + décharges int.) vs apport (profs, CSD compris)
+    const needs = calculateNeeds();
+    const apports = calculateDynamicApports();
+    d.subjects.forEach(s => {
+        const meta = d.subjectMeta[s];
+        // Seules les disciplines en mode division, sans lien parent/enfant (les pôles
+        // type EPS/UNSS ou Français/Latin s'équilibrent entre eux), sont analysées.
+        if (!meta || meta.mode !== 'div' || meta.parent) return;
+        if (d.subjects.some(o => d.subjectMeta[o] && d.subjectMeta[o].parent === s)) return;
+        const dechInt = (d.teachers||[]).filter(t=>t.subject===s).reduce((a,t)=>a+(parseFloat(t.decharge)||0),0);
+        const besoin = (needs[s]||0) + dechInt;
+        const apport = apports[s] ? apports[s].total : 0;
+        if (besoin > 0 || apport > 0) diag.tensions.push({ subject: s, besoin, apport, ecart: apport - besoin });
+    });
+    diag.tensions.sort((a,b) => a.ecart - b.ecart);
+
+    // Marge de structure : dotation (cibles par division + moyens supp.) − besoins totaux
+    diag.dotation = d.structure.reduce((a,l)=>a+(l.div||0)*(l.target||0),0)
+                  + (d.additionalMeans ? (parseFloat(d.additionalMeans.total)||0) : 0);
+    diag.besoins = Object.values(needs).reduce((a,b)=>a+b,0);
+    diag.margeStructure = diag.dotation - diag.besoins;
+
+    return diag;
+}
+
+// Ajoute des heures PLEINES à un niveau, réparties sur des disciplines cibles.
+// wholePerDiv : +1h/division si le budget le permet, sinon barrettes d'1h pleine de niveau (marge += 1/div).
+function _allouerHeuresPleines(d, lvlName, pool, targets, journal) {
+    const lvl = d.structure.find(l => l.level === lvlName);
+    if (!lvl || lvl.div <= 0) return pool;
+    for (const s of targets) {
+        if (pool < 1) break;
+        const cfg = d.levelConfig[lvlName] && d.levelConfig[lvlName][s];
+        const meta = d.subjectMeta[s];
+        if (!cfg || !meta || meta.mode !== 'div' || !(meta.levels||[]).includes(lvlName)) continue;
+        if (pool >= lvl.div) {           // +1h pleine par division
+            cfg.marge = (parseFloat(cfg.marge)||0) + 1;
+            pool -= lvl.div;
+            journal.push(`+1h/division de ${s} en ${lvlName} (+${lvl.div}h)`);
+        } else {                          // barrettes d'1h pleine à l'échelle du niveau
+            const n = Math.floor(pool);
+            if (n >= 1) {
+                cfg.marge = (parseFloat(cfg.marge)||0) + n / lvl.div;
+                pool -= n;
+                journal.push(`+${n}h de ${s} en barrette de niveau ${lvlName}`);
+            }
+        }
+    }
+    return pool;
+}
+
+// --- Générateurs de scénarios (chacun : condition d'application + mutation + justification) ---
+const SCENARIO_GENERATORS = [
+    {
+        id: 'edt',
+        applicable: diag => diag.fractionalSlots.length > 0,
+        build: (diag) => {
+            const parNiveau = {};
+            diag.fractionalSlots.forEach(f => { (parNiveau[f.lvl] = parNiveau[f.lvl] || []).push(f); });
+            const journal = [];
+            const mutate = (d) => {
+                let resteGlobal = 0;
+                const targets = [...new Set(diag.tensions.filter(t => t.ecart < 0).map(t => t.subject)
+                    .concat(["Français", "Maths", "LV1 Anglais"]))];
+                Object.keys(parNiveau).forEach(lvlName => {
+                    let pool = 0;
+                    parNiveau[lvlName].forEach(f => {
+                        d.levelConfig[lvlName][f.subject].marge = 0;
+                        pool += f.hours;
+                    });
+                    // Priorité aux disciplines les plus en tension présentes sur ce niveau, puis Français/Maths
+                    resteGlobal += _allouerHeuresPleines(d, lvlName, pool, targets, journal);
+                });
+                // Les restes de chaque niveau sont mutualisés puis replacés en heures pleines
+                if (resteGlobal >= 1) {
+                    for (const lvl of d.structure) {
+                        if (resteGlobal < 1) break;
+                        resteGlobal = _allouerHeuresPleines(d, lvl.level, resteGlobal, targets, journal);
+                    }
+                }
+                if (resteGlobal > 0.01) journal.push(`${resteGlobal.toFixed(1)}h rendues à la marge de structure`);
+            };
+            const detail = Object.keys(parNiveau).map(l =>
+                `${l} : ` + parNiveau[l].map(f => `${f.subject} ${f.hours.toFixed(1)}h`).join(', ')).join(' ; ');
+            return {
+                name: "🤖 EDT allégé — suppression des barrettes fractionnaires",
+                notes: `Diagnostic : créneaux non entiers détectés (modèle « 4 classes = 5 groupes ») → ${detail}. ` +
+                       `Ces barrettes d'1h30 contraignent l'EDT de toutes les autres disciplines. ` +
+                       `Proposition : réallocation en HEURES PLEINES → ${'${JOURNAL}'}. Coût global nul.`,
+                mutate, journal
+            };
+        }
+    },
+    {
+        id: 'reequilibrage',
+        applicable: diag => diag.niveauxSansMarge.length > 0 &&
+            Object.values(diag.margeParNiveau).some(v => v >= 3 + MARGE_MIN),
+        build: (diag) => {
+            const receveur = diag.niveauxSansMarge[0];
+            const donneur = Object.keys(diag.margeParNiveau)
+                .filter(l => l !== receveur)
+                .sort((a,b) => diag.margeParNiveau[b] - diag.margeParNiveau[a])[0];
+            const dispo = diag.margeParNiveau[donneur];
+            const transfert = Math.min(3, Math.floor(dispo - MARGE_MIN));
+            const journal = [];
+            const mutate = (d) => {
+                const lvlD = d.structure.find(l => l.level === donneur);
+                // Retirer 'transfert' heures sur la plus grosse marge du niveau donneur
+                let aRetirer = transfert;
+                const cfgs = Object.entries(d.levelConfig[donneur])
+                    .filter(([s,c]) => (parseFloat(c.marge)||0) > 0 &&
+                            d.subjectMeta[s] && d.subjectMeta[s].mode === 'div')
+                    .sort((a,b) => (b[1].marge||0) - (a[1].marge||0));
+                for (const [s, cfg] of cfgs) {
+                    if (aRetirer <= 0) break;
+                    const prendre = Math.min(aRetirer, Math.floor(cfg.marge * lvlD.div));
+                    if (prendre >= 1) {
+                        cfg.marge = +(cfg.marge - prendre / lvlD.div).toFixed(4);
+                        aRetirer -= prendre;
+                        journal.push(`−${prendre}h d'AP ${s} en ${donneur}`);
+                    }
+                }
+                const injecte = transfert - aRetirer;
+                const reste = _allouerHeuresPleines(d, receveur, injecte, ["Français", "Maths"], journal);
+                if (reste > 0.01) journal.push(`${reste.toFixed(1)}h non placées`);
+            };
+            return {
+                name: `🤖 Rééquilibrage — marge pour le niveau ${receveur}`,
+                notes: `Diagnostic : le niveau ${receveur} ne dispose d'AUCUNE heure de marge, tandis que ` +
+                       `${donneur} en concentre ${dispo.toFixed(1)}h. ` +
+                       `Proposition : transfert de ${transfert}h en heures pleines → ${'${JOURNAL}'}. Coût global nul.`,
+                mutate, journal
+            };
+        }
+    },
+    {
+        id: 'reliquat',
+        applicable: diag => diag.margeStructure > MARGE_MAX || diag.margeStructure < MARGE_MIN,
+        build: (diag) => {
+            const exces = diag.margeStructure > MARGE_MAX;
+            const volume = Math.round(Math.abs(diag.margeStructure - MARGE_CIBLE));
+            const journal = [];
+            const mutate = (d) => {
+                if (exces) {
+                    // Répartir l'excédent vers les disciplines les plus en tension, par niveau le plus chargé
+                    const cible = diag.tensions.filter(t => t.ecart < 0).map(t => t.subject)
+                        .concat(["Français", "Maths"]);
+                    let pool = volume;
+                    for (const lvl of d.structure) {
+                        if (pool < 1) break;
+                        pool = _allouerHeuresPleines(d, lvl.level, pool, [...new Set(cible)], journal);
+                    }
+                } else {
+                    // Dégager des heures : réduire les plus grosses marges (jamais sous zéro)
+                    let aRetirer = volume;
+                    for (const lvl of d.structure) {
+                        if (aRetirer <= 0) break;
+                        const cfgs = Object.entries(d.levelConfig[lvl.level])
+                            .filter(([s,c]) => (parseFloat(c.marge)||0) * lvl.div >= 1)
+                            .sort((a,b) => (b[1].marge||0) - (a[1].marge||0));
+                        for (const [s, cfg] of cfgs) {
+                            if (aRetirer <= 0) break;
+                            const prendre = Math.min(aRetirer, Math.floor(cfg.marge * lvl.div));
+                            cfg.marge = +(cfg.marge - prendre / lvl.div).toFixed(4);
+                            aRetirer -= prendre;
+                            journal.push(`−${prendre}h d'AP ${s} en ${lvl.level}`);
+                        }
+                    }
+                }
+            };
+            return {
+                name: exces ? "🤖 Réinvestir le reliquat excédentaire" : "🤖 Reconstituer la marge de sécurité",
+                notes: `Diagnostic : la marge de structure est de ${diag.margeStructure.toFixed(1)}h, hors de la ` +
+                       `bande de pilotage ${MARGE_MIN}–${MARGE_MAX}h. ` +
+                       (exces ? `Des heures dues aux élèves restent non réparties. ` : `La répartition est trop tendue. `) +
+                       `Proposition : ${exces ? 'réinvestissement' : 'récupération'} de ${volume}h → ${'${JOURNAL}'}.`,
+                mutate, journal
+            };
+        }
+    },
+    {
+        id: 'tensions',
+        applicable: diag => diag.tensions.length > 0 && diag.tensions[0].ecart <= -2 &&
+                            diag.tensions[diag.tensions.length-1].ecart >= 2,
+        build: (diag) => {
+            const deficit = diag.tensions[0];
+            const surplus = diag.tensions[diag.tensions.length-1];
+            const volume = Math.min(3, Math.floor(Math.min(-deficit.ecart, surplus.ecart)));
+            const journal = [];
+            const mutate = (d) => {
+                let aDeplacer = volume;
+                for (const lvl of d.structure) {
+                    if (aDeplacer <= 0) break;
+                    const cSur = d.levelConfig[lvl.level][surplus.subject];
+                    const cDef = d.levelConfig[lvl.level][deficit.subject];
+                    if (!cSur || !cDef) continue;
+                    const prendre = Math.min(aDeplacer, Math.floor((parseFloat(cSur.marge)||0) * lvl.div));
+                    if (prendre >= 1) {
+                        cSur.marge = +((cSur.marge||0) - prendre / lvl.div).toFixed(4);
+                        cDef.marge = +((cDef.marge||0) + prendre / lvl.div).toFixed(4);
+                        aDeplacer -= prendre;
+                        journal.push(`${prendre}h de ${surplus.subject} vers ${deficit.subject} en ${lvl.level}`);
+                    }
+                }
+            };
+            return {
+                name: `🤖 Résorber la tension en ${deficit.subject}`,
+                notes: `Diagnostic : ${deficit.subject} est sous-couvert de ${Math.abs(deficit.ecart).toFixed(1)}h ` +
+                       `(besoin ${deficit.besoin.toFixed(1)}h / apport ${deficit.apport.toFixed(1)}h) alors que ` +
+                       `${surplus.subject} est excédentaire de ${surplus.ecart.toFixed(1)}h. ` +
+                       `Proposition : déplacement de ${volume}h de marge → ${'${JOURNAL}'}. ` +
+                       `À croiser avec les compétences réelles des enseignants (complément de service interne possible).`,
+                mutate, journal
+            };
+        }
+    }
+];
+
+// --- Point d'entrée : bouton "Proposer (auto)" du comparateur ---
+function proposeScenariosAuto() {
+    if (!DATA) return;
+    const diag = analyseDhgPourSuggestions();
+    const existants = getScenarios();
+    const dataRef = JSON.parse(JSON.stringify(DATA));
+    delete dataRef._scenarios;
+
+    let crees = 0, resume = [];
+    SCENARIO_GENERATORS.forEach(gen => {
+        if (!gen.applicable(diag)) return;
+        const prop = gen.build(diag);
+        if (existants.some(s => s.name === prop.name)) return; // pas de doublon
+
+        // Application sur une copie, mesure par les fonctions de l'app elle-même
+        const snapshot = JSON.parse(JSON.stringify(dataRef));
+        const sauvegarde = DATA;
+        DATA = snapshot;
+        try {
+            prop.mutate(DATA);
+            calculateRecap();
+        } finally {
+            var conso = parseFloat(document.getElementById('dash-conso')?.innerText) || 0;
+            var marge = parseFloat(document.getElementById('dash-solde')?.innerText) || 0;
+            DATA = sauvegarde;
+        }
+        calculateRecap(); // restaure l'affichage sur les données réelles
+
+        const scenario = {
+            id: Date.now() + crees,
+            name: prop.name,
+            notes: prop.notes.replace('${JOURNAL}', prop.journal.join(' ; ') || 'aucun mouvement possible'),
+            dhg: DATA.config.total,
+            divisions: DATA.structure.reduce((a,l)=>a+(l.div||0),0),
+            conso: conso,
+            hsaPercent: document.getElementById('global-hsa-percent-display')?.innerText || "0%",
+            marge: marge,
+            date: new Date().toLocaleDateString('fr-FR'),
+            data: snapshot
+        };
+        delete scenario.data._scenarios;
+        scenario.score = calculateQualityScore(scenario);
+        existants.push(scenario);
+        crees++;
+        resume.push("• " + prop.name.replace('🤖 ', '') + "\n  " + (prop.journal.join(' ; ') || '—'));
+    });
+
+    if (crees > 0) {
+        syncScenarios(existants);
+        renderScenariosTable();
+        alert(`🤖 ${crees} scénario(s) proposé(s) d'après l'analyse de votre répartition :\n\n${resume.join('\n\n')}\n\nLes justifications détaillées sont dans les notes de chaque scénario.`);
+    } else {
+        const pts = [];
+        if (diag.fractionalSlots.length === 0) pts.push("aucune barrette fractionnaire");
+        if (diag.niveauxSansMarge.length === 0) pts.push("tous les niveaux ont de la marge");
+        if (diag.margeStructure >= MARGE_MIN && diag.margeStructure <= MARGE_MAX) pts.push(`marge de structure saine (${diag.margeStructure.toFixed(1)}h)`);
+        alert("🤖 Aucune nouvelle proposition : " + (pts.join(', ') || "les scénarios proposés existent déjà") + ".");
+    }
+}
