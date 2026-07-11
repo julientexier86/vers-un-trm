@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DHG Manager V9</title>
+    	    <script type="text/javascript" nonce="d138737c69654cc2a044a0c0a0b" src="//local.adguard.org?ts=1782547455302&amp;type=content-script&amp;dmn=my.microsoftpersonalcontent.com&amp;url=https%3A%2F%2Fmy.microsoftpersonalcontent.com%2Fpersonal%2Fb5abc5be15f97879%2F_layouts%2F15%2Fdownload.aspx%3FUniqueId%3D630eb2ce-b507-440c-9633-3d8fa077b36d%26Translate%3Dfalse%26tempauth%3Dv1e.eyJzaXRlaWQiOiIxMTNmYjc3OC0zOTU1LTRiMjQtYTc3Ni03MGU5NWU5MzI5NWQiLCJhdWQiOiIwMDAwMDAwMy0wMDAwLTBmZjEtY2UwMC0wMDAwMDAwMDAwMDAvbXkubWljcm9zb2Z0cGVyc29uYWxjb250ZW50LmNvbUA5MTg4MDQwZC02YzY3LTRjNWItYjExMi0zNmEzMDRiNjZkYWQiLCJleHAiOiIxNzgyNTU4MDI2In0.znFTBMV2FfWE3aEBgFUaNNwupb1WJofWWkmAsg9C89ZeLMeZp9WFwdBfSMi3hYuOjXf6WIkKexZuSRQEf6Kn3rNGIq6Jo4nAGT2hmFEjD4QMdO3hYcmiPwGYWQ3HHuwLI-OPNm4yRMQpABdta7mxc8TXpxyBLWCGGt7QP35bIBHEA-GN0iWgP7c7cyCSTXAXQY9GByJ4SPY3OeYftDpR7mcGloaen3C1aeF-859iFndjsQHOMpy1xatTlL590eSmDUmXlwN4BkoFdngvS4czZDjgFCjTP1aD2O82zwBaDZnkvjH6WmG6wnON-pzXrj9peb3ic1VjCrkRlymTO-JmaqUNRIuVjnHwwBZlDC7oL4Vf6HOVkXji2AQCYAp0XmvmIIJH8Jj7HwHb4VgAGdrsiIGMrTIPJRJMrYXjZqjihsvZBJkhhHw5vX1rP0Ox83AlEEZZ50Lc2FD_fk2TD_vN5oPpeO6tEx6xZPqL-VnLQjdTqu6JA355DqUBKtc8zpt9-UiAMKrH5o1VucU7MOMxYVHLb48UPXZ5bRcteA1tk7dK-iSDC_6NFDCKRnc5zK4QZBKKbEgCjiAPIXh0Fgrj5cSet7qOH5lwQBTE6dOuN6g.VWsKXLlCYrvgPRfdGbe72noqa3dCNfPhUhqOUdh5FCc%26ApiVersion%3D2.0&amp;app=org.mozilla.firefox&amp;css=3&amp;js=1&amp;rel=1&amp;rji=1&amp;sbe=1"></script><script type="text/javascript" nonce="d138737c69654cc2a044a0c0a0b" src="//local.adguard.org?ts=1782547455302&amp;name=AdGuard%20Extra&amp;type=user-script"></script><link rel="icon" type="image/png" href="data:image/png;base64,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">
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="setup-overlay">
+    <div class="setup-box">
+        <h1>👋 Bienvenue sur DHG Manager V9</h1>
+        <p>Veuillez sélectionner le type d'établissement pour configurer la structure initiale.</p>
+        <div class="setup-options">
+            <div class="setup-btn" onclick="initData('college')">
+                <span class="setup-icon">🏫</span>
+                <span>Collège</span>
+                <small style="color:#777; font-weight:normal; margin-top:5px;">6ème à 3ème</small>
+            </div>
+            <div class="setup-btn" onclick="initData('lgt')">
+                <span class="setup-icon">🏛️</span>
+                <span>Lycée GT</span>
+                <small style="color:#777; font-weight:normal; margin-top:5px;">2nde à Terminale</small>
+            </div>
+            <div class="setup-btn" onclick="initData('lp')">
+                <span class="setup-icon">🔧</span>
+                <span>Lycée Pro</span>
+                <small style="color:#777; font-weight:normal; margin-top:5px;">Structure libre</small>
+            </div>
+        </div>
+        <p style="margin-top:25px; font-size:0.9rem; color:#777; border-top:1px solid #eee; padding-top:15px;">
+            Vous avez déjà un fichier ?<br>
+            <button class="btn btn-dark btn-sm" style="margin-top:10px;" onclick="document.getElementById('load-file-input-overlay').click()">📂 Charger une sauvegarde</button>
+            <input type="file" id="load-file-input-overlay" style="display:none;" onchange="loadSaveFile(this)" accept=".data,.json">
+        </p>
+    </div>
+</div>
+
+<div class="sidebar">
+    <h2>DHG Manager V9</h2>
+    <div class="sidebar-subtitle">By Fred Vedrenne</div>
+    
+    <div style="display: flex; justify-content: center; gap: 8px; margin-bottom: 20px; padding: 0 20px;">
+        <button id="btn-undo" class="btn btn-sm btn-dark" style="flex: 1; justify-content: center; font-size: 0.8rem;" onclick="undo()" disabled>↩️ Annuler</button>
+        <button id="btn-redo" class="btn btn-sm btn-dark" style="flex: 1; justify-content: center; font-size: 0.8rem;" onclick="redo()" disabled>↪️ Rétablir</button>
+    </div>
+    
+    <button class="menu-item active" onclick="nav('dashboard', this)">📊 Tableau de Bord</button>
+    <button class="menu-item" onclick="nav('structure', this)">🏗️ Structure (Niveaux)</button>
+    <button class="menu-item" onclick="nav('matieres', this)">🔗 Matières & Modalités</button>
+    <button id="menu-eds" class="menu-item" onclick="nav('eds', this)">🎓 Spécialités & EDS</button>
+    <button class="menu-item" onclick="nav('professeurs', this)">👥 Professeurs</button>
+    <button class="menu-item" onclick="nav('ventilation', this)">⏱️ Grille Horaire</button>
+    <button class="menu-item" onclick="nav('pilotage', this)">⚖️ Ventilation</button>
+    <button class="menu-item" onclick="nav('equipes', this)">🎓 Équipes Pédagogiques</button>
+    <button class="menu-item" onclick="nav('repartition', this)">📋 Répartition de Services</button>
+    <button class="menu-item" onclick="nav('recap', this)">📑 Bilan & Export</button>
+    
+    <div style="margin-top:auto; padding:20px;">
+        <button id="theme-toggle-btn" class="btn btn-dark" style="width:100%; margin-bottom:10px; font-size:0.85rem; justify-content:center;" onclick="toggleTheme()">🌓 Mode Sombre</button>
+        <button class="btn btn-primary" style="width:100%; margin-bottom:10px;" onclick="downloadSaveFile()">💾 Sauvegarder (.data)</button>
+        <input type="file" id="load-file-input" style="display:none;" onchange="loadSaveFile(this)" accept=".data,.json">
+        <button class="btn btn-dark" style="width:100%; font-size:0.85rem;" onclick="document.getElementById('load-file-input').click()">📂 Charger une sauvegarde</button>
+        
+        <hr style="border:0; border-top:1px solid rgba(255,255,255,0.2); margin:15px 0;">
+        
+        <button class="btn btn-warning" style="width:100%; font-size:0.85rem;" onclick="changeEpleType()">⚙️ Changer Type Établissement</button>
+    </div>
+</div>
+
+<div class="content">
+
+    <div id="dashboard" class="section active">
+        <div class="card">
+            <div class="card-header">
+                <h3>Pilotage Global</h3>
+                <div class="export-group">
+                    <button class="btn-exp" onclick="exportCurrentPage('excel')">📊 Excel</button>
+                    <button class="btn-exp" onclick="exportCurrentPage('pdf')">📄 PDF</button>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <label style="margin:0; font-weight:normal;">Rentrée :</label>
+                    <select id="dash-year" style="width:100px; font-weight:bold;" onchange="updateYear(this.value)"></select>
+                </div>
+            </div>
+            
+            <div class="kpi-container">
+                <div class="kpi-box" style="border-color: var(--primary);">
+                    <div class="kpi-title">Dotation Rectorat</div>
+                    <div class="kpi-value"><span id="dash-total-dhg">0</span> h</div>
+                    <small style="color:#777; font-size:0.7rem; font-style:italic;">(Via Structure)</small>
+                </div>
+                
+                <div class="kpi-box" style="border-color: var(--success);">
+                    <div class="kpi-title">Consommation</div>
+                    <div class="kpi-value"><span id="dash-conso">0</span> h</div>
+                </div>
+
+                <div class="kpi-box" style="border-color: var(--hp-color);">
+                    <div class="kpi-title">HP Utilisées</div>
+                    <div class="kpi-value"><span id="dash-hp-used">0</span> h</div>
+                </div>
+
+                <div class="kpi-box" style="border-color: var(--hsa-color);">
+                    <div class="kpi-title">HSA Utilisées</div>
+                    <div class="kpi-value"><span id="dash-hsa">0</span> h</div>
+                </div>
+                
+                <div class="kpi-box" style="border-color: #95a5a6;">
+                    <div class="kpi-title">Marge</div>
+                    <div class="kpi-value" id="dash-solde">0</div>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:25px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:300px; background:#f8f9fa; padding:20px; border-radius:8px; border:1px solid #eee;">
+                    <h4 style="margin-top:0;">Répartition</h4>
+                    <div style="height:250px; position:relative; width:100%;">
+                        <canvas id="dhgChart"></canvas>
+                    </div>
+                </div>
+                <div style="flex:1; min-width:300px; background:#f8f9fa; padding:20px; border-radius:8px; border:1px solid #eee;">
+                    <h4 style="margin-top:0;">Paramètres Dotation</h4>
+                    
+                    <label>Dotation Globale (Donnée issue du menu Structure)</label>
+                    <span id="global-dhg-display" class="dotation-display">0</span>
+                    
+                    <div style="display:flex; gap:15px; margin-bottom:15px;">
+                        <div style="flex:1"><label>Dont HP</label><input type="number" id="global-hp" value="0" onchange="updateGlobalDHG()"></div>
+                        <div style="flex:1"><label>Dont HSA</label><input type="number" id="global-hsa" value="0" onchange="updateGlobalDHG()"></div>
+                    </div>
+                    
+                    <div class="percent-display">
+                        <span id="global-hsa-percent-display">0%</span> HSA
+                    </div>
+                </div>
+            
+        
+        <!-- Estimation Budget Card -->
+        <div class="card" style="margin-top:20px;">
+            <div class="card-header">
+                <h3>Estimation Budgétaire Prévisionnelle</h3>
+                <div style="font-size:0.85rem; color:var(--text-muted);">Taux annuels indicatifs (HSA/Pacte)</div>
+            </div>
+            <div class="kpi-container" style="margin-bottom: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
+                <div class="kpi-box" style="border-color: var(--secondary);">
+                    <div class="kpi-title">Coût Estimé HSA Enseignants</div>
+                    <div class="kpi-value"><span id="budget-hsa-cost">0</span> €</div>
+                    <small style="color:var(--text-muted); font-size:0.7rem;">(Base moyenne: 1400€ Certifié / 1800€ Agrégé)</small>
+                </div>
+                <div class="kpi-box" style="border-color: var(--accent);">
+                    <div class="kpi-title">Coût Estimé Pactes</div>
+                    <div class="kpi-value"><span id="budget-pacte-cost">0</span> €</div>
+                    <small style="color:var(--text-muted); font-size:0.7rem;">(Base: 1250€ la part/brique)</small>
+                </div>
+                <div class="kpi-box" style="border-color: var(--success);">
+                    <div class="kpi-title">Total Enveloppe HSA + Pactes</div>
+                    <div class="kpi-value" style="font-weight:800; color:var(--success);"><span id="budget-total-cost">0</span> €</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bilan de Couverture Diagnostic Card -->
+        <div class="card" style="margin-top:20px;">
+            <div class="card-header">
+                <h3>Diagnostic de Couverture (Adéquation Offre / Besoin)</h3>
+                <button class="btn btn-primary btn-sm" onclick="renderDiagnosticTable()">🔄 Actualiser</button>
+            </div>
+            <p style="font-size:0.9rem; color:var(--text-muted); margin-top:0;">
+                Compare les besoins d'enseignement théoriques calculés par la structure de l'établissement et les heures d'enseignement réellement apportées par les professeurs affectés.
+            </p>
+            <div style="overflow-x:auto;">
+                <table class="table" style="margin-top:10px;">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left;">Discipline / Matière</th>
+                            <th>Besoin Structure + Décharges (A)</th>
+                            <th>Ressource Enseignants (B)</th>
+                            <th>Écart (B - A)</th>
+                            <th>Statut / Diagnostic</th>
+                        </tr>
+                    </thead>
+                    <tbody id="diagnostic-coverage-body">
+                        <tr><td colspan="5" style="color:var(--text-muted); font-style:italic;">Calcul du diagnostic en cours...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Stress Test Simulator Card -->
+        <div class="card" style="margin-top:20px;">
+            <div class="card-header">
+                <h3>Simulateur de Stress Test Budgétaire</h3>
+            </div>
+            <p style="font-size:0.9rem; color:var(--text-muted); margin-top:0;">
+                Simulez l'impact d'une hausse/baisse de dotation globale ou d'une décision de fermeture/ouverture de classe par le rectorat.
+            </p>
+            
+            <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap; margin-bottom:15px; border-bottom:1px solid var(--border-color); padding-bottom:15px;">
+                <div style="flex:1; min-width:180px;">
+                    <label style="font-weight:bold; display:block; margin-bottom:5px;">Mode de Simulation :</label>
+                    <select id="stress-test-mode" onchange="toggleStressTestMode(this.value)" style="padding:8px; width:100%;">
+                        <option value="hours">Variation en heures (DHG)</option>
+                        <option value="class">Fermeture / Ouverture de classe</option>
+                    </select>
+                </div>
+                
+                <div style="flex:2; min-width:280px; display:flex; gap:10px; align-items:center;" id="stress-test-hours-group">
+                    <div style="flex:1;">
+                        <label style="font-weight:bold; display:block;">Variation brute (en heures) :</label>
+                        <input type="number" id="stress-test-input" value="-10" step="1" onchange="runStressTest()" style="margin-top:5px; padding:8px; width:100%;">
+                    </div>
+                </div>
+                
+                <div style="flex:2; min-width:280px; display:none; gap:10px; align-items:center;" id="stress-test-class-group">
+                    <div style="flex:1;">
+                        <label style="font-weight:bold; display:block;">Niveau impacté :</label>
+                        <select id="stress-test-level" onchange="runStressTest()" style="margin-top:5px; padding:8px; width:100%;"></select>
+                    </div>
+                    <div style="flex:1;">
+                        <label style="font-weight:bold; display:block;">Décision Rectorat :</label>
+                        <select id="stress-test-action" onchange="runStressTest()" style="margin-top:5px; padding:8px; width:100%;">
+                            <option value="remove">-1 classe (Fermeture)</option>
+                            <option value="add">+1 classe (Ouverture)</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div style="flex:1; min-width:150px; text-align:center;">
+                    <div style="font-size:0.95rem; font-weight:bold;">Nouveau Solde :</div>
+                    <div id="stress-test-result" style="font-size:1.6rem; font-weight:800; color:var(--danger); margin-top:5px;">0 h</div>
+                </div>
+            </div>
+            
+            <div id="stress-test-recommendations" style="background:rgba(230, 126, 34, 0.1); border-left:4px solid var(--accent); padding:15px; border-radius:var(--radius); font-size:0.9rem; color:var(--text-main); line-height:1.4;">
+                Saisissez des paramètres pour voir les recommandations d'ajustement.
+            </div>
+        </div>
+
+        <!-- Room Occupancy Card -->
+        <div class="card" style="margin-top:20px;">
+            <div class="card-header">
+                <h3>Estimation d'Occupation des Salles Spécialisées</h3>
+                <button class="btn btn-primary btn-sm" onclick="calculateRoomsOccupancy()">🔄 Actualiser</button>
+            </div>
+            <p style="font-size:0.9rem; color:var(--text-muted); margin-top:0;">
+                Estime l'occupation hebdomadaire théorique des salles spécifiques (sciences, EPS, arts) sur une base d'utilisation cible de 30 heures par salle.
+            </p>
+            <div style="overflow-x:auto;">
+                <table class="table" style="margin-top:10px;">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left;">Type de Salles</th>
+                            <th>Occupation Hebdomadaire Estimée</th>
+                            <th>Nombre de Salles Nécessaires</th>
+                            <th>Diagnostic / Alerte</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rooms-occupancy-body">
+                        <tr><td colspan="4" style="color:var(--text-muted); font-style:italic;">Calcul de l'occupation en cours...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+<div class="card" style="margin-top:20px;">
+            <div class="card-header">
+                <h3>Comparateur de Scénarios</h3>
+                <div>
+                    <button class="btn btn-primary btn-sm" onclick="saveCurrentScenario()">💾 Enregistrer Scénario</button>
+                    <button class="btn btn-danger btn-sm" onclick="clearScenarios()">🗑️ Réinitialiser</button>
+                </div>
+            </div>
+            <p style="font-size:0.9rem; color:var(--text-muted); margin-top:0;">
+                Sauvegardez différentes configurations de votre DHG pour les comparer ci-dessous.
+            </p>
+            <div id="scenarios-comparison-table-wrapper" style="overflow-x:auto;">
+                <table class="table" style="margin-top:10px;">
+                    <thead>
+                        <tr>
+                            <th>Nom du Scénario</th>
+                            <th>Dotation (DHG)</th>
+                            <th>Classes (Divisions)</th>
+                            <th>Heures Utilisées (Conso)</th>
+                            <th>Taux de HSA</th>
+                            <th>Marge</th>
+                            <th>Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scenarios-comparison-body">
+                        <tr><td colspan="8" style="color:var(--text-muted); font-style:italic;">Aucun scénario enregistré pour le moment.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+</div>
+        </div>
+    </div>
+
+    <div id="structure" class="section">
+        <div class="card">
+            <div class="card-header">
+                <h3>Structure Pédagogique (Niveaux)</h3>
+                <div class="export-group">
+                    <button class="btn-exp" onclick="exportCurrentPage('excel')">📊 Excel</button>
+                    <button class="btn-exp" onclick="exportCurrentPage('pdf')">📄 PDF</button>
+                </div>
+                <div>
+                    <button class="btn btn-success btn-sm" onclick="addNewLevel()">➕ Ajouter Niveau</button>
+                    <button class="btn btn-primary btn-sm" onclick="generateClasses(true)">🔄 Régénérer</button>
+                    <button class="btn btn-warning btn-sm" onclick="autoInitializeStructure()" title="Générer automatiquement la structure selon les effectifs">⚡ Initialisation Auto</button>
+                </div>
+            </div>
+            <table id="structure-table">
+                <thead>
+                    <tr>
+                        <th>Niveau</th><th>Effectif</th><th>Divisions</th><th>Moy./Div</th>
+                        <th style="background:#fff3cd; color:#d35400;">Moyens Horaires par Division</th><th>Total Moyens</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="structure-body"></tbody>
+            </table>
+        </div>
+        <div class="card">
+            <h3>Classes</h3>
+            <div id="class-list-container" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;"></div>
+        </div>
+    </div>
+
+   <div id="ventilation" class="section">
+        <div class="card">
+            <div class="card-header">
+                <h3>Grille Horaire</h3>
+                
+                <div id="grid-kpi" class="kpi-widget">
+                    <div class="kpi-row">
+                        <span class="kpi-icon">🌍</span>
+                        <span class="kpi-label">ÉTAB :</span>
+                        <span id="kpi-etab-val" class="kpi-val">0 / 0 h</span>
+                        <span id="kpi-etab-diff" class="kpi-tag">0</span>
+                    </div>
+                    <div id="kpi-level-row" class="kpi-row level-row">
+                        <span class="kpi-icon">🏗️</span>
+                        <span class="kpi-label">NIV :</span>
+                        <span id="kpi-lvl-val" class="kpi-val">0 / 0 h</span>
+                        <span id="kpi-lvl-diff" class="kpi-tag">0</span>
+                    </div>
+                </div>
+                <div class="export-group">
+                    <button class="btn-exp" onclick="exportCurrentPage('excel')">📊 Excel</button>
+                    <button class="btn-exp" onclick="exportCurrentPage('pdf')">📄 PDF</button>
+                </div>
+                <div>
+                    <button class="btn btn-purple btn-sm" onclick="openWeightingMenu()">⚖️ Pondération</button>
+                    <button class="btn btn-warning btn-sm" onclick="resetToOfficial()">⚠️ Reset Officiel</button>
+                </div>
+            </div>
+            <div class="tab-container" id="grid-tabs"></div>
+            <div id="grid-container"></div>
+        </div>
+    </div>
+
+<div id="equipes" class="section">
+        <div class="card">
+            <div class="card-header">
+                <h3>Répartition & Équipes Pédagogiques</h3>
+                <div class="export-group">
+                    <button class="btn-exp" onclick="exportCurrentPage('excel')">📊 Excel (Grille)</button>
+                    <button class="btn-exp" onclick="exportCurrentPage('pdf')">📄 PDF (Grille)</button>
+                    <button class="btn-exp" style="background:#8e44ad;" onclick="exportTeamsListsPDF()">📄 PDF (Listes/Classe)</button>
+                </div>
+                <div style="font-size:0.8rem; color:#666; font-style:italic; display:flex; align-items:center; gap:10px;">
+                    <span style="display:flex; align-items:center;"><span style="width:12px; height:12px; background:#27ae60; margin-right:4px;"></span>Classe</span>
+                    <span style="display:flex; align-items:center;"><span style="width:12px; height:12px; background:#3498db; margin-right:4px;"></span>Groupe</span>
+                    <span>👑 Clic Droit = Prof Principal</span>
+                    <span style="color:#c0392b; font-weight:bold;">Rouge = Prof manquant</span>
+                </div>
+            </div>
+            <div class="grid-wrapper" style="max-height: 75vh; overflow:auto;">
+                <table class="team-table" id="teams-table">
+                    </table>
+            </div>
+        </div>
+        <!-- PP tracking Card -->
+        <div class="card" style="margin-top:20px;">
+            <div class="card-header">
+                <h3>Suivi des Professeurs Principaux (ISOE Part Modulable)</h3>
+                <button class="btn btn-primary btn-sm" onclick="renderPPSummaryTable()">🔄 Actualiser</button>
+            </div>
+            <p style="font-size:0.9rem; color:var(--text-muted); margin-top:0;">
+                Vérifie l'attribution des professeurs principaux pour chaque classe. En lycée (Terminale), la co-responsabilité (Co-PP) est supportée.
+            </p>
+            <div style="overflow-x:auto;">
+                <table class="table" style="margin-top:10px;">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left;">Classe / Division</th>
+                            <th>Professeur Principal 1 (ISOE 100%)</th>
+                            <th>Professeur Principal 2 / Co-PP (Optionnel)</th>
+                            <th>Diagnostic / Conformité</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pp-summary-body">
+                        <tr><td colspan="4" style="color:var(--text-muted); font-style:italic;">Calcul du récapitulatif en cours...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+<div id="repartition" class="section">
+    <div class="card">
+        <div class="card-header">
+            <h3>Répartition & Ventilation des Services</h3>
+            <div class="toggle-container">
+    <button class="toggle-btn" id="btn-view-repart-prof" onclick="switchRepartitionView('profs')">👤 Par Enseignant</button>
+    <button class="toggle-btn active" id="btn-view-repart-mat" onclick="switchRepartitionView('matieres')">📚 Par Matière</button>
+</div>
+            <div class="export-group">
+                <button class="btn-exp" onclick="exportCurrentPage('excel')">📊 Excel</button>
+                <button class="btn-exp" onclick="exportCurrentPage('pdf')">📄 PDF</button>
+            </div>
+        </div>
+        <div id="repartition-content">
+            </div>
+    </div>
+</div>
+
+    <div id="pilotage" class="section">
+    <div class="card">
+        <div class="card-header">
+            <h3>Ventilation & Besoins</h3>
+            <div class="export-group">
+                <button class="btn-exp" onclick="exportCurrentPage('excel')">📊 Excel</button>
+                <button class="btn-exp" onclick="exportCurrentPage('pdf')">📄 PDF</button>
+				            </div>
+            </div>
+        <div class="table-container">
+            <table class="table" id="rh-table-disc">
+                <thead>
+                    <tr>
+                        <th style="width:20%;">Discipline / Enseignant</th>
+                        <th style="width:10%;">Besoin</th>
+                        <th style="width:10%;">Apport</th>
+                        <th style="width:10%;">HP</th>
+                        <th style="width:10%;">HSA</th>
+                        <th style="width:10%;">Solde</th>
+                    </tr>
+                </thead>
+                <tbody id="rh-disc-body"></tbody>
+                <tfoot id="rh-disc-total" style="font-weight:bold; background:#ecf0f1;"></tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="professeurs" class="section">
+    <div class="card">
+        <div class="card-header">
+    <h3>Liste des Professeurs</h3>
+    
+    <div class="export-group">
+        <button class="btn-exp" onclick="exportCurrentPage('excel')">📊 Excel</button>
+        <button class="btn-exp" onclick="exportCurrentPage('pdf')">📄 PDF</button>
+    </div>
+
+    <div style="display:flex; gap:8px; align-items:center;">
+        <button class="btn btn-sm btn-outline" id="btn-toggle-codes" onclick="toggleRhCodes()" title="Afficher/Masquer les codes matières">👁️ Codes</button>
+        
+        <div style="width:1px; height:20px; background:#ddd; margin:0 2px;"></div>
+        <div class="kpi-container" style="margin-bottom: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 15px;">
+            <div class="kpi-box" style="border-color: var(--secondary);">
+                <div class="kpi-title">Nombre de Professeurs</div>
+                <div class="kpi-value" id="rh-kpi-count">0</div>
+            </div>
+            <div class="kpi-box" style="border-color: var(--success);">
+                <div class="kpi-title">Total HSA Assignées</div>
+                <div class="kpi-value" id="rh-kpi-hsa">0 h</div>
+            </div>
+            <div class="kpi-box" style="border-color: var(--accent);">
+                <div class="kpi-title">Total Parts de Pacte</div>
+                <div class="kpi-value" id="rh-kpi-pacte">0</div>
+            </div>
+        </div>
+    
+        
+        <input type="file" id="import-rh-input-v4" accept=".csv, .xlsx, .xls" style="display:none;" onchange="importRH(this)">
+        <button class="btn btn-dark btn-sm" onclick="document.getElementById('import-rh-input-v4').click()" title="Importer depuis Excel">📂 Import</button>
+        
+        <button class="btn btn-danger btn-sm" onclick="clearTeachers()" title="Supprimer tous les professeurs">🗑️ Vider</button>
+        
+        <button class="btn btn-success btn-sm" onclick="promptAddTeacher()">➕ Ajouter</button>
+    </div>
+</div>
+        <div class="table-container">
+            <table class="table" id="rh-table-list">
+                <thead>
+                    <tr>
+                        <th style="width:20%;">Nom</th>
+                        <th class="col-code-header" style="width:5%; display:none;">Code</th>
+                        <th style="width:20%;">Discipline</th>
+                        <th style="width:10%;">Statut</th>
+                        <th style="width:10%;">ORS</th>
+                        <th style="width:10%;">HSA</th>
+                        <th style="width:10%;">Total</th>
+                        <th style="width:15%;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="rh-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="eds" class="section">
+    <div class="card">
+        <div class="card-header">
+            <h3>Pilotage des Spécialités (EDS)</h3>
+            <div class="export-group">
+                <button class="btn btn-purple btn-sm" onclick="transferEDS('premiere', 'terminale')">🚀 Basculer 1ère ➔ Term</button>
+                <button class="btn btn-dark btn-sm" onclick="transferEDS('terminale', 'premiere')">↩️ Basculer Term ➔ 1ère</button>
+            </div>
+        </div>
+        
+        <div class="card" style="border-top: 5px solid var(--secondary); background: #fdfefe; margin-bottom: 30px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h4 style="margin:0; color:var(--secondary); display:flex; align-items:center;">Niveau PREMIÈRE <button class="btn btn-outline btn-sm" onclick="optimizeEDSGroups('premiere')" style="margin-left: 15px; padding: 2px 8px; font-size: 0.75rem; border-color:var(--secondary); color:var(--secondary); background:transparent;">⚡ Optimiser les groupes</button></h4>
+                <div style="background:var(--secondary); color:white; padding:5px 15px; border-radius:20px; font-weight:bold;">
+                    Total Niveau : <span id="total-eds-1ere">0</span> h
+                </div>
+            </div>
+            
+            <table class="table-eds">
+                <thead>
+                    <tr>
+                        <th style="text-align:left; width:30%;">Spécialité</th>
+                        <th style="width:12%;">Effectif</th>
+                        <th style="width:12%;">Groupes</th>
+                        <th style="width:12%;">H / Gr.</th>
+                        <th style="width:12%;">Élèves / Gr.</th>
+                        <th style="width:17%;">Coût H / Élève</th>
+                        <th style="width:5%;"></th>
+                    </tr>
+                </thead>
+                <tbody id="eds-full-1ere"></tbody>
+            </table>
+            <button class="btn btn-primary" style="width:100%;" onclick="addEDS('premiere')">➕ Configurer les EDS de Première</button>
+        </div>
+
+        <div class="card" style="border-top: 5px solid var(--accent); background: #fdfefe;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h4 style="margin:0; color:var(--accent); display:flex; align-items:center;">Niveau TERMINALE <button class="btn btn-outline btn-sm" onclick="optimizeEDSGroups('terminale')" style="margin-left: 15px; padding: 2px 8px; font-size: 0.75rem; border-color:var(--accent); color:var(--accent); background:transparent;">⚡ Optimiser les groupes</button></h4>
+                <div style="background:var(--accent); color:white; padding:5px 15px; border-radius:20px; font-weight:bold;">
+                    Total Niveau : <span id="total-eds-term">0</span> h
+                </div>
+            </div>
+            
+            <table class="table-eds">
+                <thead>
+                    <tr>
+                        <th style="text-align:left; width:30%;">Spécialité</th>
+                        <th style="width:12%;">Effectif</th>
+                        <th style="width:12%;">Groupes</th>
+                        <th style="width:12%;">H / Gr.</th>
+                        <th style="width:12%;">Élèves / Gr.</th>
+                        <th style="width:17%;">Coût H / Élève</th>
+                        <th style="width:5%;"></th>
+                    </tr>
+                </thead>
+                <tbody id="eds-full-term"></tbody>
+            </table>
+            <button class="btn btn-warning" style="width:100%;" onclick="addEDS('terminale')">➕ Configurer les EDS de Terminale</button>
+        </div>
+    </div>
+</div>
+
+    <div id="matieres" class="section">
+        <div class="card">
+            <div class="card-header">
+                <h3>Matières & Modalités</h3>
+                <div class="export-group">
+                    <button class="btn-exp" onclick="exportCurrentPage('excel')">📊 Excel</button>
+                    <button class="btn-exp" onclick="exportCurrentPage('pdf')">📄 PDF</button>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="addSubject()">➕ Nouvelle Matière</button>
+            </div>
+            <table id="subjects-table">
+                <thead><tr>
+    <th style="width:80px;">Code</th>
+    <th style="text-align:left;">Matière (Éditable)</th>
+    <th style="width:180px;">Rattaché à (Parent)</th>
+<th style="width:200px;">Disciplines Associées<br><small>(Co-intervention)</small></th>
+	<th style="width:160px;">Modalités</th>
+    <th style="text-align:left;">Paramètres (Niveaux / Volumes)</th>
+    <th>Actions</th>
+</tr></thead>
+                <tbody id="subjects-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="recap" class="section">
+        <div class="card">
+            <div class="card-header">
+                <h3>Bilan & Export</h3>
+                <div class="export-group">
+                    <button class="btn-exp" onclick="exportCurrentPage('excel')">📊 Excel</button>
+                    <button class="btn-exp" onclick="exportCurrentPage('pdf')">📄 PDF</button>
+					<button class="btn-exp" style="background:#e67e22;" onclick="generateCAPres()">📽️ Diaporama CA (.pptx)</button>
+					<button class="btn-exp" style="background:#27ae60;" onclick="openEdtModal()" aria-label="Générer export EDT">📅 Export EDT Monoposte</button>
+                </div>
+            </div>
+          <table id="recap-table" style="width:100%; table-layout: fixed;">
+    <thead>
+        <tr>
+            <th style="text-align:left; width: 250px;">Discipline</th>
+            
+            <th style="background:#fdedec; color:#c0392b; width:70px;">Besoin</th>
+            <th style="background:#e8f6f3; color:#16a085; width:70px;">Apport</th>
+            <th style="width:70px;">Dont HP</th>
+            <th style="width:70px;">Dont HSA</th>
+            <th style="width:70px;">Écart</th>
+            
+            <th>Commentaires</th>
+        </tr>
+    </thead>
+    <tbody id="recap-body"></tbody>
+    <tfoot id="recap-total" style="background:#ecf0f1; font-weight:bold;"></tfoot>
+</table>
+        </div>
+    </div>
+
+</div>
+<div id="split-overlay">
+    <div class="split-box">
+        <div class="split-header">
+            <h3>✂️ Ventilation de service</h3>
+            <button onclick="closeSplitModal()" style="background:none; border:none; font-size:1.2rem; cursor:pointer;">×</button>
+        </div>
+        
+        <div id="split-info" class="info-dispo"></div>
+        
+        <div id="split-container">
+            </div>
+
+        <div class="split-actions">
+            <button class="btn btn-dark" onclick="closeSplitModal()">Annuler</button>
+            <button class="btn btn-success" onclick="confirmVentilation()">Valider la ventilation</button>
+        </div>
+    </div>
+</div>
+<div id="export-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:10000; justify-content:center; align-items:center; backdrop-filter:blur(3px);">
+    <div style="background:white; padding:30px; border-radius:15px; width:450px; max-width:90%; box-shadow:0 15px 35px rgba(0,0,0,0.2);">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2 style="margin:0; color:#2c3e50;">🖨️ Configuration PDF</h2>
+            <button onclick="document.getElementById('export-overlay').style.display='none'" style="border:none; background:none; font-size:1.5rem; cursor:pointer; color:#95a5a6;">×</button>
+        </div>
+
+        <div class="export-section-title">1. Orientation</div>
+        <div class="export-tiles-row">
+            <div class="export-tile" id="tile-orient-portrait" onclick="setExportParam('orientation', 'portrait')">
+                <div class="icon-paper icon-portrait"></div>
+                <div class="tile-label">Portrait</div>
+            </div>
+            <div class="export-tile" id="tile-orient-landscape" onclick="setExportParam('orientation', 'landscape')">
+                <div class="icon-paper icon-landscape"></div>
+                <div class="tile-label">Paysage</div>
+            </div>
+        </div>
+
+        <div class="export-section-title">2. Format Papier</div>
+        <div class="export-tiles-row">
+            <div class="export-tile" id="tile-format-a4" onclick="setExportParam('format', 'a4')">
+                <span class="icon-format">A4</span>
+                <div class="tile-label">Standard</div>
+            </div>
+            <div class="export-tile" id="tile-format-a3" onclick="setExportParam('format', 'a3')">
+                <span class="icon-format">A3</span>
+                <div class="tile-label">Grand Format</div>
+            </div>
+        </div>
+
+        <div class="export-options-row">
+            <label class="switch-label">
+                <input type="checkbox" id="chk-force-one-page" checked style="width:20px; height:20px; accent-color:#27ae60;">
+                <div>
+                    <div style="font-weight:bold;">Forcer sur une seule page</div>
+                    <small style="color:#7f8c8d;">Réduit automatiquement la police</small>
+                </div>
+            </label>
+        </div>
+
+        <button class="btn btn-success" style="width:100%; padding:15px; margin-top:20px; font-size:1.1rem; justify-content:center;" onclick="confirmGlobalExport()">
+    Télécharger le PDF
+</button>
+    </div>
+</div>
+<div id="dech-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:10000; justify-content:center; align-items:center; backdrop-filter:blur(2px);">
+    <div style="background:white; padding:25px; border-radius:10px; width:400px; max-width:90%; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+        <h3 style="margin-top:0; color:#2c3e50; border-bottom:1px solid #eee; padding-bottom:10px;">Gestion des Décharges</h3>
+        <p id="dech-teacher-name" style="font-weight:bold; color:#3498db; margin-bottom:20px;"></p>
+
+        <div style="background:#f9f9f9; padding:15px; border-radius:8px; border:1px solid #eee; margin-bottom:15px;">
+            <label style="display:block; font-weight:bold; color:#e67e22; margin-bottom:5px;">1. Décharge DGH (Interne)</label>
+            <small style="color:#777; display:block; margin-bottom:8px;">Heure de Labo, Cabinet, Vaisselle...<br>👉 <strong>Coûte</strong> à l'établissement.</small>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <input type="number" id="input-dech-int" step="0.5" min="0" style="width:80px; text-align:center; font-weight:bold; color:#e67e22;" placeholder="0">
+                <span>heure(s)</span>
+            </div>
+        </div>
+
+        <div style="background:#f9f9f9; padding:15px; border-radius:8px; border:1px solid #eee; margin-bottom:20px;">
+            <label style="display:block; font-weight:bold; color:#27ae60; margin-bottom:5px;">2. Décharge Rectorat (Externe)</label>
+            <small style="color:#777; display:block; margin-bottom:8px;">Syndicale, Allègement médical, IMP Rectorat...<br>👉 <strong>Ne coûte pas</strong> (réduit l'ORS payé).</small>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <input type="number" id="input-dech-ext" step="0.5" min="0" style="width:80px; text-align:center; font-weight:bold; color:#27ae60;" placeholder="0">
+                <span>heure(s)</span>
+            </div>
+        </div>
+
+        <div style="text-align:right; display:flex; gap:10px; justify-content:flex-end;">
+            <button class="btn btn-dark" onclick="currentDechIdx = -1; document.getElementById('dech-overlay').style.display='none'">Annuler</button>
+            <button class="btn btn-success" onclick="saveDechargeDetails()">Valider</button>
+        </div>
+    </div>
+</div>
+
+<div id="edt-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="edt-modal-title" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(44, 62, 80, 0.9); z-index:10500; justify-content:center; align-items:center; backdrop-filter:blur(3px);">
+    <div style="background:white; padding:30px; border-radius:12px; width:650px; max-width:95%; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 15px 35px rgba(0,0,0,0.2);">
+        
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #ecf0f1; padding-bottom:15px; margin-bottom:20px;">
+            <h2 id="edt-modal-title" style="margin:0; color:var(--primary); font-size:1.4rem;">📅 Assistant d'Export EDT Monoposte</h2>
+            <button onclick="document.getElementById('edt-modal-overlay').style.display='none'" style="border:none; background:none; font-size:1.8rem; cursor:pointer; color:#7f8c8d;" aria-label="Fermer">×</button>
+        </div>
+
+        <div id="edt-page-1" style="display:flex; flex-direction:column; flex-grow:1; overflow:hidden;">
+            <div style="flex-grow:1; overflow-y:auto; padding-right:10px; margin-bottom:20px;">
+                <h3 style="font-size:1.1rem; color:var(--secondary); margin-bottom:10px;">1. Découpage des blocs horaires</h3>
+                <div style="background:#f8f9fa; padding:15px; border-radius:8px; border:1px solid #eee; margin-bottom:25px; display:flex; gap:20px;">
+                    <label style="cursor:pointer; display:flex; align-items:center; gap:8px;">
+                        <input type="radio" name="edt-split" value="1h" checked style="accent-color:var(--secondary); width:18px; height:18px;">
+                        <b>Blocs de 1h</b> (Ex: 4.5h = 4×1h H + 1×1h Q)
+                    </label>
+                    <label style="cursor:pointer; display:flex; align-items:center; gap:8px;">
+                        <input type="radio" name="edt-split" value="unique" style="accent-color:var(--secondary); width:18px; height:18px;">
+                        <b>Bloc unique</b> (Ex: 1×4.5h H)
+                    </label>
+                </div>
+
+                <h3 style="font-size:1.1rem; color:var(--secondary); margin-bottom:10px;">2. Sélection des matières avec alignement ou partage</h3>
+                <p style="font-size:0.85rem; color:#7f8c8d; margin-top:0;">Cochez les matières (Français, Groupes de Sciences...) pour lesquelles définir la répartition des élèves (Groupes ou Co-intervention).</p>
+                
+                <div id="edt-groups-container" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; background:#f8f9fa; padding:15px; border-radius:8px; border:1px solid #eee; max-height:220px; overflow-y:auto;">
+                    </div>
+            </div>
+            
+            <div style="border-top:2px solid #ecf0f1; padding-top:20px; display:flex; justify-content:flex-end; gap:15px;">
+                <button class="btn btn-dark" onclick="document.getElementById('edt-modal-overlay').style.display='none'">Annuler</button>
+                <button class="btn btn-success" onclick="goToEdtPage2()" style="background:var(--primary); border-color:var(--primary);">Suivant (Répartition des profs) ➔</button>
+            </div>
+        </div>
+
+        <div id="edt-page-2" style="display:none; flex-direction:column; flex-grow:1; overflow:hidden;">
+            <p style="font-size:0.85rem; color:#7f8c8d; margin-top:0; margin-bottom:15px;">Indiquez précisément la modalité d'enseignement pour chaque intervenant détecté.</p>
+            
+            <div id="edt-page-2-container" style="flex-grow:1; overflow-y:auto; padding-right:10px; margin-bottom:20px; background:#f8f9fa; border:1px solid #eee; border-radius:8px; padding:15px; max-height:350px;">
+                </div>
+
+            <div style="border-top:2px solid #ecf0f1; padding-top:20px; display:flex; justify-content:space-between; gap:15px;">
+                <button class="btn btn-dark" onclick="goBackToEdtPage1()">« Précédent</button>
+                <button class="btn btn-success" onclick="generateEdtExport()" style="background:#27ae60;">Générer l'export Excel 🚀</button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div id="eds-selector-overlay">
+    <div class="eds-selector-box">
+        <div class="split-header">
+            <h3 id="eds-selector-title">Sélectionner les Spécialités</h3>
+            <button onclick="closeEdsSelector()" style="background:none; border:none; font-size:1.5rem; cursor:pointer;">×</button>
+        </div>
+        <p style="color: #7f8c8d; font-size: 0.9rem;">Cliquez sur les tuiles pour sélectionner les enseignements ouverts dans votre établissement.</p>
+        
+        <div class="eds-grid" id="eds-tiles-container">
+            </div>
+
+        <div class="split-actions">
+            <button class="btn btn-dark" onclick="closeEdsSelector()">Annuler</button>
+            <button class="btn btn-success" id="btn-validate-eds" style="padding: 10px 30px;">Valider la sélection</button>
+        </div>
+    </div>
+</div>
+<div id="linked-subjects-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:10000; justify-content:center; align-items:center; backdrop-filter:blur(2px);">
+    <div style="background:white; padding:25px; border-radius:10px; width:500px; max-width:90%; box-shadow:0 10px 25px rgba(0,0,0,0.2); display:flex; flex-direction:column; max-height:85vh;">
+        <div style="border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center;">
+            <h3 style="margin:0; color:#2c3e50;">🔗 Disciplines Associées</h3>
+            <button onclick="closeLinkedSubjectsModal()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#7f8c8d;">×</button>
+        </div>
+        
+        <p style="color:#7f8c8d; font-size:0.9rem; margin-top:0;">
+            Sélectionnez les matières dont les professeurs pourront intervenir sur <strong id="linked-modal-target-name" style="color:#2c3e50;"></strong>.
+        </p>
+
+        <div id="linked-subjects-list" style="overflow-y:auto; flex-grow:1; border:1px solid #eee; padding:10px; border-radius:6px; background:#f9f9f9; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            </div>
+
+        <div style="margin-top:20px; text-align:right; border-top:1px solid #eee; padding-top:15px;">
+            <button class="btn btn-success" onclick="closeLinkedSubjectsModal()">Valider & Fermer</button>
+        </div>
+    </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
