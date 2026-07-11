@@ -1,0 +1,6 @@
+# Sauvegardes de données personnelles (élèves, professeurs, établissement)
+*.data
+
+# Fichiers système / outils locaux
+.DS_Store
+.claude/
