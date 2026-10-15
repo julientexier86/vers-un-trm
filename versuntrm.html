@@ -141,8 +141,9 @@
                 <div style="flex:1; min-width:300px; background:var(--light); padding:20px; border-radius:8px; border:1px solid var(--border-color);">
                     <h4 style="margin-top:0;">Paramètres Dotation</h4>
                     
-                    <label>Dotation Globale (Donnée issue du menu Structure)</label>
-                    <span id="global-dhg-display" class="dotation-display">0</span>
+                    <label>Dotation Globale (DGH notifiée par le rectorat, en heures)</label>
+                    <input type="number" id="global-dhg-display" class="dotation-display" value="0" step="0.5" onchange="setGlobalDHG(this.value)" title="Saisissez ici la DGH notifiée par le rectorat : la différence avec la somme des moyens par division est reportée automatiquement dans « Moyens supplémentaires » (menu Structure).">
+                    <small style="display:block; color:var(--text-muted); margin:-8px 0 12px;">Saisie directe de la DGH rectorat. L'écart avec les moyens par division (menu Structure) est ajusté dans « Moyens supplémentaires ».</small>
                     
                     <div style="display:flex; gap:15px; margin-bottom:15px;">
                         <div style="flex:1"><label>Dont HP</label><input type="number" id="global-hp" value="0" onchange="updateGlobalDHG()"></div>

@@ -369,7 +369,7 @@ function initYearSelector() {
 }
 
 function initUI() {
-    document.getElementById('global-dhg-display').innerText = DATA.config.total;
+    document.getElementById('global-dhg-display').value = DATA.config.total;
     document.getElementById('global-hp').value = DATA.config.hp;
     document.getElementById('global-hsa').value = DATA.config.hsa;
     if(!DATA.classNames) DATA.classNames = {}; 
@@ -629,11 +629,24 @@ function renderStructure() {
     const dbTotal = document.getElementById('dash-total-dhg');
     if(dbTotal) dbTotal.innerText = totHeures;
     const dbDisplay = document.getElementById('global-dhg-display');
-    if(dbDisplay) dbDisplay.innerText = totHeures;
+    if(dbDisplay) dbDisplay.value = totHeures;
     
     saveData();
 }
 function updStruct(i,f,v) { DATA.structure[i][f] = parseFloat(v); if(f==='div') generateClasses(false); saveData(); renderStructure(); }
+// Saisie directe de la DGH notifiée par le rectorat :
+// l'écart avec la somme (divisions × moyens par division) est porté par les « Moyens supplémentaires ».
+function setGlobalDHG(val) {
+    const cible = parseFloat(val);
+    if (isNaN(cible) || cible < 0) { renderStructure(); return; }
+    const parDivision = DATA.structure.reduce((a, l) => a + (l.div || 0) * (l.target || 0), 0);
+    if (!DATA.additionalMeans) DATA.additionalMeans = { total: 0 };
+    DATA.additionalMeans.total = +(cible - parDivision).toFixed(2);
+    saveData();
+    renderStructure();
+    if (typeof calculateRecap === 'function') calculateRecap();
+    if (typeof renderDiagnosticTable === 'function') renderDiagnosticTable();
+}
 function updSupp(val) { if(!DATA.additionalMeans) DATA.additionalMeans = { total: 0 }; DATA.additionalMeans.total = parseFloat(val) || 0; saveData(); renderStructure(); }
 function generateClasses(conf) {
     // Si on clique sur le bouton "Régénérer", on force le reset (avec confirmation)
