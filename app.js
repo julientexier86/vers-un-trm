@@ -644,7 +644,10 @@ function setGlobalDHG(val) {
     DATA.additionalMeans.total = +(cible - parDivision).toFixed(2);
     saveData();
     renderStructure();
-    if (typeof calculateRecap === 'function') calculateRecap();
+    // La DGH a changé : le HP notifié reste fixe, le HSA en est déduit
+    const hpEl = document.getElementById('global-hp');
+    if (hpEl && parseFloat(hpEl.value) > 0) updateGlobalDHG('hp');
+    else if (typeof calculateRecap === 'function') calculateRecap();
     if (typeof renderDiagnosticTable === 'function') renderDiagnosticTable();
 }
 function updSupp(val) { if(!DATA.additionalMeans) DATA.additionalMeans = { total: 0 }; DATA.additionalMeans.total = parseFloat(val) || 0; saveData(); renderStructure(); }
@@ -1672,7 +1675,17 @@ function renderRHDisc() {
     const realApport = realHP + realHSA;
 }
 function updateYear(v){ DATA.config.year=parseInt(v); saveData(); }
-function updateGlobalDHG(){ DATA.config.hp=parseFloat(document.getElementById('global-hp').value); DATA.config.hsa=parseFloat(document.getElementById('global-hsa').value); saveData(); calculateRecap(); }
+// DGH = HP + HSA : en modifiant l'un des deux champs, l'autre est déduit de la dotation globale.
+function updateGlobalDHG(source){
+    const hpEl = document.getElementById('global-hp'), hsaEl = document.getElementById('global-hsa');
+    const total = parseFloat(DATA.config.total) || 0;
+    let hp = parseFloat(hpEl.value), hsa = parseFloat(hsaEl.value);
+    if (source === 'hp' && !isNaN(hp) && total > 0) hsa = Math.max(0, +(total - hp).toFixed(2));
+    else if (source === 'hsa' && !isNaN(hsa) && total > 0) hp = Math.max(0, +(total - hsa).toFixed(2));
+    DATA.config.hp = isNaN(hp) ? 0 : hp; DATA.config.hsa = isNaN(hsa) ? 0 : hsa;
+    hpEl.value = DATA.config.hp; hsaEl.value = DATA.config.hsa;
+    saveData(); calculateRecap();
+}
 function saveData(a){ 
     localStorage.setItem('DHG_Data_V9', JSON.stringify(DATA)); 
     if (typeof pushState === 'function') pushState();
